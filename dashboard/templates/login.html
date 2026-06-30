@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Kirish{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center">
+    <div class="card p-8 w-full max-w-sm" x-data="loginForm()">
+        <div class="flex items-center gap-3 mb-8">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">S</div>
+            <div>
+                <div class="font-bold">Telegram AI Agent</div>
+                <div class="text-slate-500 text-sm">Admin Panel</div>
+            </div>
+        </div>
+
+        <form @submit.prevent="login()">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-400 mb-1.5">Username</label>
+                <input type="text" x-model="username" placeholder="admin" autocomplete="username">
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-slate-400 mb-1.5">Parol</label>
+                <input type="password" x-model="password" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn-primary w-full text-center" :disabled="loading">
+                <span x-text="loading ? 'Kirish...' : 'Kirish'"></span>
+            </button>
+            <div x-show="error" class="mt-3 text-red-400 text-sm text-center" x-text="error"></div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loginForm() {
+    return {
+        username: '',
+        password: '',
+        loading: false,
+        error: '',
+        async login() {
+            this.loading = true;
+            this.error = '';
+            try {
+                const form = new FormData();
+                form.append('username', this.username);
+                form.append('password', this.password);
+                const res = await fetch('/api/auth/token', { method: 'POST', body: form });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token', data.access_token);
+                    window.location.href = '/dashboard/';
+                } else {
+                    this.error = data.detail || 'Kirish muvaffaqiyatsiz';
+                }
+            } catch(e) {
+                this.error = 'Server bilan bog\'lanishda xato';
+            } finally {
+                this.loading = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

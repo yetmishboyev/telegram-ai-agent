@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% set active_page = "memory" %}
+{% block title %}Xotira{% endblock %}
+
+{% block content %}
+<div x-data="memoryPage()" x-init="init()">
+    <h1 class="text-xl font-bold mb-6">AI Xotirasi</h1>
+
+    <div class="flex gap-4 mb-6">
+        <input x-model="searchId" type="number" placeholder="Telegram ID kiriting..." class="w-64">
+        <button @click="loadMemory()" class="btn-primary">Ko'rish</button>
+    </div>
+
+    <div x-show="memory">
+        <h2 class="font-semibold mb-3 text-slate-400" x-text="'Foydalanuvchi: ' + (memory?.user || '')"></h2>
+
+        <div class="card overflow-hidden mb-4">
+            <div class="p-4 border-b border-[#2d3148]"><h3 class="font-medium">Faktlar</h3></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Kategoriya</th>
+                        <th>Kalit</th>
+                        <th>Qiymat</th>
+                        <th>Muhimlik</th>
+                        <th>Sana</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="f in memory?.facts" :key="f.id">
+                        <tr>
+                            <td><span class="badge-yellow px-2 py-0.5 rounded text-xs border" x-text="f.category"></span></td>
+                            <td class="font-medium text-sm" x-text="f.key"></td>
+                            <td class="text-slate-300 text-sm" x-text="f.value"></td>
+                            <td class="text-sm" x-text="(f.importance*100).toFixed(0)+'%'"></td>
+                            <td class="text-slate-500 text-xs" x-text="new Date(f.created_at).toLocaleDateString('uz')"></td>
+                            <td>
+                                <button @click="deleteFact(f.id)" class="text-red-400 text-xs hover:text-red-300">O'chirish</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card p-4" x-show="memory?.summaries?.length">
+            <h3 class="font-medium mb-3">Suhbat xulosalari</h3>
+            <div class="space-y-3">
+                <template x-for="s in memory?.summaries" :key="s.created_at">
+                    <div class="bg-[#0f1117] rounded-lg p-3">
+                        <p class="text-sm text-slate-300 leading-relaxed" x-text="s.summary"></p>
+                        <div class="text-xs text-slate-500 mt-2" x-text="s.message_count + ' ta xabar — ' + new Date(s.created_at).toLocaleString('uz')"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function memoryPage() {
+    return {
+        searchId: '',
+        memory: null,
+        async init() {},
+        async loadMemory() {
+            if (!this.searchId) return;
+            this.memory = await api('/memory/' + this.searchId);
+        },
+        async deleteFact(factId) {
+            if (!confirm('O\'chirishni tasdiqlaysizmi?')) return;
+            await api('/memory/' + this.searchId + '/fact/' + factId, 'DELETE');
+            this.memory.facts = this.memory.facts.filter(f => f.id !== factId);
+        }
+    }
+}
+</script>
+{% endblock %}

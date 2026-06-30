@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% set active_page = "settings" %}
+{% block title %}Sozlamalar{% endblock %}
+
+{% block content %}
+<div x-data="settingsPage()" x-init="init()">
+    <h1 class="text-xl font-bold mb-6">Sozlamalar</h1>
+
+    <div class="grid grid-cols-2 gap-6">
+        <!-- Agent holati -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4">Agent holati</h2>
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="font-medium">Avtomatik javob</div>
+                    <div class="text-slate-500 text-sm mt-0.5">Barcha xabarlarga javob berish</div>
+                </div>
+                <button @click="toggleAgent()"
+                    :class="agentEnabled ? 'bg-indigo-600' : 'bg-slate-600'"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors">
+                    <span :class="agentEnabled ? 'translate-x-6' : 'translate-x-1'"
+                        class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform">
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Konfiguratsiya -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4">Konfiguratsiya</h2>
+            <div class="space-y-3">
+                <template x-for="c in configs" :key="c.key">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1" x-text="c.key"></label>
+                        <div class="flex gap-2">
+                            <input x-model="c.value" class="flex-1">
+                            <button @click="saveConfig(c)" class="btn-primary text-xs px-3">Saqlash</button>
+                        </div>
+                    </div>
+                </template>
+                <div class="flex gap-2 mt-4">
+                    <input x-model="newKey" placeholder="Kalit" class="flex-1">
+                    <input x-model="newValue" placeholder="Qiymat" class="flex-1">
+                    <button @click="addConfig()" class="btn-primary text-xs px-3">Qo'shish</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function settingsPage() {
+    return {
+        agentEnabled: true,
+        configs: [],
+        newKey: '',
+        newValue: '',
+        async init() {
+            const [status, configs] = await Promise.all([
+                api('/admin/agent/status'),
+                api('/admin/config')
+            ]);
+            if (status) this.agentEnabled = status.enabled;
+            if (configs) this.configs = configs;
+        },
+        async toggleAgent() {
+            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentEnabled });
+            if (res) this.agentEnabled = res.enabled;
+        },
+        async saveConfig(c) {
+            await api('/admin/config', 'POST', { key: c.key, value: c.value });
+        },
+        async addConfig() {
+            if (!this.newKey) return;
+            await api('/admin/config', 'POST', { key: this.newKey, value: this.newValue });
+            this.configs.push({ key: this.newKey, value: this.newValue });
+            this.newKey = '';
+            this.newValue = '';
+        }
+    }
+}
+</script>
+{% endblock %}

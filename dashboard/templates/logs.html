@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set active_page = "logs" %}
+{% block title %}Loglar{% endblock %}
+
+{% block content %}
+<div x-data="logsPage()" x-init="init()">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-bold">System Loglar</h1>
+        <button @click="init()" class="btn-primary text-sm">Yangilash</button>
+    </div>
+
+    <div class="card overflow-hidden">
+        <div class="font-mono text-xs">
+            <template x-for="l in logs" :key="l.id">
+                <div class="flex gap-4 px-4 py-2 border-b border-[#1e2030] hover:bg-[#1e2030]">
+                    <span class="text-slate-500 w-40 flex-shrink-0" x-text="new Date(l.created_at).toLocaleTimeString('uz')"></span>
+                    <span :class="{
+                        'text-red-400': l.level === 'ERROR',
+                        'text-yellow-400': l.level === 'WARNING',
+                        'text-green-400': l.level === 'INFO',
+                        'text-slate-400': l.level === 'DEBUG',
+                    }" class="w-16 flex-shrink-0 font-bold" x-text="l.level"></span>
+                    <span class="text-indigo-400 w-32 flex-shrink-0" x-text="l.component"></span>
+                    <span class="text-slate-300 flex-1" x-text="l.message"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function logsPage() {
+    return {
+        logs: [],
+        async init() {
+            const data = await api('/stats/logs?limit=200');
+            if (data) this.logs = data;
+        }
+    }
+}
+</script>
+{% endblock %}

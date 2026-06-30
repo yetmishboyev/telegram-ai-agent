@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% set active_page = "home" %}
+{% block title %}Asosiy{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-bold">Boshqaruv paneli</h1>
+            <p class="text-slate-500 text-sm mt-1">Real-vaqt statistikasi</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-sm text-slate-400">Agent holati:</span>
+            <button @click="toggleAgent()"
+                :class="agentEnabled ? 'badge-green' : 'badge-red'"
+                class="px-4 py-1.5 rounded-full text-sm font-medium border cursor-pointer"
+                x-text="agentEnabled ? 'YOQILGAN' : 'O\'CHIRILGAN'">
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats cards -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="card p-5">
+            <div class="text-slate-400 text-sm mb-1">Jami foydalanuvchilar</div>
+            <div class="text-3xl font-bold" x-text="stats.total_users ?? '—'"></div>
+        </div>
+        <div class="card p-5">
+            <div class="text-slate-400 text-sm mb-1">Jami xabarlar</div>
+            <div class="text-3xl font-bold" x-text="stats.total_messages ?? '—'"></div>
+        </div>
+        <div class="card p-5">
+            <div class="text-slate-400 text-sm mb-1">Bugun yuborildi</div>
+            <div class="text-3xl font-bold text-green-400" x-text="stats.sent_today ?? '—'"></div>
+        </div>
+        <div class="card p-5">
+            <div class="text-slate-400 text-sm mb-1">Spam bloklandi</div>
+            <div class="text-3xl font-bold text-red-400" x-text="stats.spam_blocked ?? '—'"></div>
+        </div>
+    </div>
+
+    <!-- Recent chats -->
+    <div class="card overflow-hidden">
+        <div class="p-4 border-b border-[#2d3148] flex items-center justify-between">
+            <h2 class="font-semibold">Oxirgi suhbatlar</h2>
+            <a href="/dashboard/chats" class="text-indigo-400 text-sm hover:text-indigo-300">Barchasini ko'rish</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Foydalanuvchi</th>
+                    <th>Xabarlar</th>
+                    <th>Oxirgi faollik</th>
+                    <th>Holat</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="u in users" :key="u.id">
+                    <tr>
+                        <td>
+                            <div class="font-medium" x-text="u.name"></div>
+                            <div class="text-slate-500 text-xs" x-text="u.username ? '@'+u.username : ''"></div>
+                        </td>
+                        <td x-text="u.total_messages"></td>
+                        <td x-text="u.last_seen ? new Date(u.last_seen).toLocaleString('uz') : '—'"></td>
+                        <td>
+                            <span :class="u.is_blacklisted ? 'badge-red' : 'badge-green'"
+                                class="px-2 py-0.5 rounded text-xs font-medium border"
+                                x-text="u.is_blacklisted ? 'Bloklangan' : 'Faol'">
+                            </span>
+                        </td>
+                        <td>
+                            <a :href="'/dashboard/chats/'+u.telegram_id"
+                                class="text-indigo-400 text-sm hover:text-indigo-300">Ko'rish</a>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dashboard() {
+    return {
+        stats: {},
+        users: [],
+        agentEnabled: true,
+        async init() {
+            const [s, u, status] = await Promise.all([
+                api('/stats/overview'),
+                api('/chats/?limit=10'),
+                api('/admin/agent/status'),
+            ]);
+            if (s) this.stats = s;
+            if (u) this.users = u.users || [];
+            if (status) this.agentEnabled = status.enabled;
+        },
+        async toggleAgent() {
+            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentEnabled });
+            if (res) this.agentEnabled = res.enabled;
+        }
+    }
+}
+</script>
+{% endblock %}

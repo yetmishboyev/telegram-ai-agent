@@ -1,0 +1,121 @@
+import asyncio
+import sys
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
+from pathlib import Path
+
+from app.config import settings
+from app.database.session import create_tables, AsyncSessionLocal
+from app.database.models import AdminUser
+from app.utils.security import hash_password
+from app.middleware.logging import LoggingMiddleware
+from app.api.routes import api_router
+from app.api.routes.dashboard import router as dashboard_router
+from sqlalchemy import select
+
+
+def configure_logging() -> None:
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        level=settings.log_level,
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> - {message}",
+        colorize=True,
+    )
+    logger.add(
+        "logs/agent_{time:YYYY-MM-DD}.log",
+        level="DEBUG",
+        rotation="00:00",
+        retention="30 days",
+        compression="gz",
+        encoding="utf-8",
+    )
+
+
+async def create_admin_if_not_exists() -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AdminUser).where(AdminUser.username == settings.admin_username)
+        )
+        admin = result.scalar_one_or_none()
+        if not admin:
+            admin = AdminUser(
+                username=settings.admin_username,
+                hashed_password=hash_password(settings.admin_password),
+            )
+            db.add(admin)
+            await db.commit()
+            logger.info(f"Admin yaratildi: {settings.admin_username}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    Path("logs").mkdir(exist_ok=True)
+    Path("sessions").mkdir(exist_ok=True)
+
+    logger.info("=== Telegram AI Agent ishga tushmoqda ===")
+
+    # DB jadvallarini yaratish
+    await create_tables()
+    await create_admin_if_not_exists()
+
+    # Telegram clientni ishga tushirish
+    from app.services.telegram_service import telegram_service
+    try:
+        await telegram_service.start()
+        telegram_task = asyncio.create_task(telegram_service.run_until_disconnected())
+        logger.info("Telegram UserBot ulandi")
+    except Exception as e:
+        logger.error(f"Telegram ulashda xato: {e}")
+        telegram_task = None
+
+    yield
+
+    # Cleanup
+    logger.info("Agent to'xtatilmoqda...")
+    if telegram_task:
+        telegram_task.cancel()
+        try:
+            await telegram_task
+        except asyncio.CancelledError:
+            pass
+    await telegram_service.disconnect()
+    logger.info("Agent to'xtatildi.")
+
+
+app = FastAPI(
+    title="Telegram AI Agent",
+    description="Shaxzodbek uchun shaxsiy Telegram AI Agent",
+    version="1.0.0",
+    docs_url="/api/docs" if not settings.is_production else None,
+    redoc_url="/api/redoc" if not settings.is_production else None,
+    lifespan=lifespan,
+)
+
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(LoggingMiddleware)
+
+# Routerlar
+app.include_router(api_router)
+app.include_router(dashboard_router)
+
+# Static fayllar
+static_dir = Path(__file__).parent.parent / "dashboard" / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "agent": "Telegram AI Agent v1.0"}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set active_page = "chats" %}
+{% block title %}Suhbat{% endblock %}
+
+{% block content %}
+<div x-data="chatDetail({{ telegram_id }})" x-init="init()">
+    <div class="flex items-center gap-4 mb-6">
+        <a href="/dashboard/chats" class="text-slate-400 hover:text-white text-sm">← Orqaga</a>
+        <div>
+            <h1 class="text-xl font-bold" x-text="userName"></h1>
+            <p class="text-slate-500 text-sm">Telegram ID: {{ telegram_id }}</p>
+        </div>
+        <div class="ml-auto flex gap-2">
+            <button @click="showSend = !showSend" class="btn-primary text-sm">Xabar yuborish</button>
+            <button @click="clearMemory()" class="btn-danger text-sm">Xotirani tozalash</button>
+        </div>
+    </div>
+
+    <!-- Send message form -->
+    <div x-show="showSend" class="card p-4 mb-4">
+        <textarea x-model="sendText" rows="3" placeholder="Xabar matni..."></textarea>
+        <div class="flex gap-2 mt-3">
+            <button @click="sendMessage()" class="btn-primary text-sm">Yuborish</button>
+            <button @click="showSend = false" class="text-slate-400 text-sm">Bekor qilish</button>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="space-y-3">
+        <template x-for="m in messages" :key="m.id">
+            <div class="card p-4">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span :class="m.role === 'user' ? 'badge-yellow' : 'badge-green'"
+                                class="px-2 py-0.5 rounded text-xs font-medium border"
+                                x-text="m.role === 'user' ? 'Foydalanuvchi' : 'Agent'">
+                            </span>
+                            <span class="text-slate-500 text-xs" x-text="new Date(m.created_at).toLocaleString('uz')"></span>
+                            <span x-show="m.intent" class="text-slate-600 text-xs" x-text="m.intent"></span>
+                        </div>
+                        <p class="text-sm leading-relaxed" x-text="m.content"></p>
+                        <div x-show="m.agent_response" class="mt-3 pl-3 border-l-2 border-indigo-500">
+                            <div class="text-xs text-slate-500 mb-1">Agent javobi:</div>
+                            <p class="text-sm text-indigo-200" x-text="m.agent_response"></p>
+                            <div x-show="!m.was_sent" class="flex gap-2 mt-2">
+                                <button @click="approveMessage(m)" class="text-green-400 text-xs hover:text-green-300">Tasdiqlash</button>
+                                <button @click="editAndApprove(m)" class="text-yellow-400 text-xs hover:text-yellow-300">Tahrirlash</button>
+                            </div>
+                            <span x-show="m.was_sent" class="text-green-500 text-xs">✓ Yuborildi</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 text-xs text-slate-500">
+                        <span x-show="m.importance" x-text="'Muhimlik: '+(m.importance*100).toFixed(0)+'%'"></span>
+                        <span x-show="m.sentiment" x-text="m.sentiment"></span>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function chatDetail(telegramId) {
+    return {
+        telegramId,
+        userName: '',
+        messages: [],
+        showSend: false,
+        sendText: '',
+        async init() {
+            const data = await api('/chats/' + telegramId + '/messages?limit=50');
+            if (data) {
+                this.userName = data.user?.name || telegramId;
+                this.messages = (data.messages || []).reverse();
+            }
+        },
+        async sendMessage() {
+            if (!this.sendText.trim()) return;
+            await api('/chats/send', 'POST', { telegram_id: this.telegramId, text: this.sendText });
+            this.sendText = '';
+            this.showSend = false;
+        },
+        async approveMessage(m) {
+            await api('/chats/approve', 'POST', { message_id: m.id });
+            m.was_sent = true;
+        },
+        async editAndApprove(m) {
+            const text = prompt('Javobni tahrirlang:', m.agent_response);
+            if (text) {
+                await api('/chats/approve', 'POST', { message_id: m.id, text });
+                m.was_sent = true;
+                m.agent_response = text;
+            }
+        },
+        async clearMemory() {
+            if (!confirm('Xotirani tozalashni tasdiqlaysizmi?')) return;
+            await api('/admin/memory/clear', 'POST', { telegram_id: this.telegramId });
+            alert('Xotira tozalandi');
+        }
+    }
+}
+</script>
+{% endblock %}
