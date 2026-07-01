@@ -3,19 +3,82 @@
 {% block title %}Xotira{% endblock %}
 
 {% block content %}
-<div x-data="memoryPage()" x-init="init()">
-    <h1 class="text-xl font-bold mb-6">AI Xotirasi</h1>
+<div class="p-6" x-data="memoryPage()" x-init="init()">
 
-    <div class="flex gap-4 mb-6">
-        <input x-model="searchId" type="number" placeholder="Telegram ID kiriting..." class="w-64">
-        <button @click="loadMemory()" class="btn-primary">Ko'rish</button>
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-5">
+        <div>
+            <h1 class="text-lg font-semibold text-slate-200">AI Xotirasi</h1>
+            <p class="text-slate-500 text-xs mt-0.5">Foydalanuvchilar haqida saqlangan ma'lumotlar</p>
+        </div>
     </div>
 
-    <div x-show="memory">
-        <h2 class="font-semibold mb-3 text-slate-400" x-text="'Foydalanuvchi: ' + (memory?.user || '')"></h2>
+    <!-- Search / User select -->
+    <div class="card p-4 mb-5">
+        <div class="flex gap-3 items-end">
+            <div class="flex-1">
+                <label class="text-xs text-slate-500 font-medium block mb-1.5">Foydalanuvchi tanlang yoki ID kiriting</label>
+                <select x-model="selectedId" @change="selectedId && loadMemory(selectedId)"
+                    class="text-sm py-2">
+                    <option value="">— Tanlang —</option>
+                    <template x-for="u in users" :key="u.telegram_id">
+                        <option :value="u.telegram_id"
+                            x-text="u.name + (u.username ? ' (@'+u.username+')' : '') + ' — ID: ' + u.telegram_id">
+                        </option>
+                    </template>
+                </select>
+            </div>
+            <span class="text-slate-600 text-sm pb-2.5">yoki</span>
+            <div>
+                <label class="text-xs text-slate-500 font-medium block mb-1.5">Telegram ID</label>
+                <div class="flex gap-2">
+                    <input x-model="manualId" @keydown.enter="loadMemory(manualId)"
+                        type="number" placeholder="12345678"
+                        class="text-sm py-2" style="width:140px">
+                    <button @click="loadMemory(manualId)" class="btn btn-primary text-xs"
+                        :disabled="!manualId">Ko'rish</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        <div class="card overflow-hidden mb-4">
-            <div class="p-4 border-b border-[#2d3148]"><h3 class="font-medium">Faktlar</h3></div>
+    <!-- Memory content -->
+    <div x-show="memory" x-transition>
+
+        <!-- User info -->
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+                :style="`background: ${avatarColor(parseInt(selectedId || manualId))}`"
+                x-text="initials(memory?.user || '')"></div>
+            <div>
+                <div class="font-semibold text-slate-200" x-text="memory?.user"></div>
+                <div class="text-xs text-slate-500"
+                    x-text="(memory?.facts?.length || 0) + ' ta fakt, ' + (memory?.summaries?.length || 0) + ' ta xulosa'"></div>
+            </div>
+            <button @click="clearAllMemory()" class="ml-auto btn btn-danger text-xs">
+                Barchasini tozalash
+            </button>
+        </div>
+
+        <!-- Category filter -->
+        <div class="flex gap-2 mb-4">
+            <template x-for="cat in ['Barchasi','personal','work','promise','event','preference','fact']" :key="cat">
+                <button @click="catFilter = cat === 'Barchasi' ? '' : cat"
+                    class="px-3 py-1 rounded-lg text-xs font-medium transition-all border"
+                    :class="(catFilter === (cat === 'Barchasi' ? '' : cat))
+                        ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                        : 'text-slate-600 border-[#1a2035] hover:border-slate-600'"
+                    x-text="cat">
+                </button>
+            </template>
+        </div>
+
+        <!-- Facts table -->
+        <div class="card overflow-hidden mb-4" x-show="filteredFacts.length > 0">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-[#1a2035]">
+                <h3 class="text-sm font-semibold text-slate-300">Faktlar</h3>
+                <span class="badge badge-purple text-[10px]" x-text="filteredFacts.length + ' ta'"></span>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -28,15 +91,35 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <template x-for="f in memory?.facts" :key="f.id">
+                    <template x-for="f in filteredFacts" :key="f.id">
                         <tr>
-                            <td><span class="badge-yellow px-2 py-0.5 rounded text-xs border" x-text="f.category"></span></td>
-                            <td class="font-medium text-sm" x-text="f.key"></td>
-                            <td class="text-slate-300 text-sm" x-text="f.value"></td>
-                            <td class="text-sm" x-text="(f.importance*100).toFixed(0)+'%'"></td>
-                            <td class="text-slate-500 text-xs" x-text="new Date(f.created_at).toLocaleDateString('uz')"></td>
                             <td>
-                                <button @click="deleteFact(f.id)" class="text-red-400 text-xs hover:text-red-300">O'chirish</button>
+                                <span class="badge badge-yellow text-[10px]" x-text="f.category"></span>
+                            </td>
+                            <td>
+                                <span class="text-sm font-medium text-slate-300" x-text="f.key"></span>
+                            </td>
+                            <td>
+                                <span class="text-sm text-slate-400" x-text="f.value"></span>
+                            </td>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-16 h-1.5 bg-[#1a2035] rounded-full overflow-hidden">
+                                        <div class="h-full bg-indigo-500 rounded-full"
+                                            :style="`width: ${f.importance * 100}%`"></div>
+                                    </div>
+                                    <span class="text-xs text-slate-600" x-text="(f.importance*100).toFixed(0)+'%'"></span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="text-xs text-slate-600"
+                                    x-text="new Date(f.created_at).toLocaleDateString('ru')"></span>
+                            </td>
+                            <td>
+                                <button @click="deleteFact(f.id)"
+                                    class="text-red-500/60 hover:text-red-400 text-xs transition-colors">
+                                    O'chirish
+                                </button>
                             </td>
                         </tr>
                     </template>
@@ -44,17 +127,44 @@
             </table>
         </div>
 
-        <div class="card p-4" x-show="memory?.summaries?.length">
-            <h3 class="font-medium mb-3">Suhbat xulosalari</h3>
-            <div class="space-y-3">
+        <!-- No facts -->
+        <div x-show="memory && filteredFacts.length === 0"
+            class="card p-8 flex flex-col items-center text-slate-600 mb-4">
+            <svg class="w-10 h-10 mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            <p class="text-sm">Bu kategoriyada faktlar topilmadi</p>
+        </div>
+
+        <!-- Summaries -->
+        <div class="card overflow-hidden" x-show="memory?.summaries?.length > 0">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-[#1a2035]">
+                <h3 class="text-sm font-semibold text-slate-300">Suhbat xulosalari</h3>
+                <span class="badge badge-blue text-[10px]" x-text="(memory?.summaries?.length || 0) + ' ta'"></span>
+            </div>
+            <div class="divide-y divide-[#1a2035]">
                 <template x-for="s in memory?.summaries" :key="s.created_at">
-                    <div class="bg-[#0f1117] rounded-lg p-3">
+                    <div class="px-5 py-4">
                         <p class="text-sm text-slate-300 leading-relaxed" x-text="s.summary"></p>
-                        <div class="text-xs text-slate-500 mt-2" x-text="s.message_count + ' ta xabar — ' + new Date(s.created_at).toLocaleString('uz')"></div>
+                        <div class="flex items-center gap-3 mt-2">
+                            <span class="text-xs text-slate-600"
+                                x-text="s.message_count + ' xabar asosida'"></span>
+                            <span class="text-slate-700">·</span>
+                            <span class="text-xs text-slate-600"
+                                x-text="fmtDate(s.created_at)"></span>
+                        </div>
                     </div>
                 </template>
             </div>
         </div>
+    </div>
+
+    <!-- Empty state (before search) -->
+    <div x-show="!memory" class="flex flex-col items-center justify-center py-20 text-slate-700">
+        <svg class="w-16 h-16 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+        <p class="text-sm">Foydalanuvchini tanlang yoki ID kiriting</p>
     </div>
 </div>
 {% endblock %}
@@ -63,17 +173,48 @@
 <script>
 function memoryPage() {
     return {
-        searchId: '',
+        users: [],
+        selectedId: '',
+        manualId: '',
         memory: null,
-        async init() {},
-        async loadMemory() {
-            if (!this.searchId) return;
-            this.memory = await api('/memory/' + this.searchId);
+        catFilter: '',
+        get filteredFacts() {
+            if (!this.memory?.facts) return [];
+            if (!this.catFilter) return this.memory.facts;
+            return this.memory.facts.filter(f => f.category === this.catFilter);
+        },
+        async init() {
+            const data = await api('/chats/?limit=200');
+            if (data) this.users = data.users || [];
+        },
+        async loadMemory(id) {
+            if (!id) return;
+            const data = await api('/memory/' + id);
+            if (data) {
+                this.memory = data;
+                this.catFilter = '';
+                if (!this.selectedId) this.selectedId = String(id);
+            } else {
+                window.toast('Foydalanuvchi topilmadi', 'error');
+            }
         },
         async deleteFact(factId) {
-            if (!confirm('O\'chirishni tasdiqlaysizmi?')) return;
-            await api('/memory/' + this.searchId + '/fact/' + factId, 'DELETE');
-            this.memory.facts = this.memory.facts.filter(f => f.id !== factId);
+            if (!confirm('Bu faktni o\'chirishni tasdiqlaysizmi?')) return;
+            const id = this.selectedId || this.manualId;
+            const res = await api('/memory/' + id + '/fact/' + factId, 'DELETE');
+            if (res?.ok) {
+                this.memory.facts = this.memory.facts.filter(f => f.id !== factId);
+                window.toast('Fakt o\'chirildi');
+            }
+        },
+        async clearAllMemory() {
+            if (!confirm('Barcha xotirani tozalashni tasdiqlaysizmi?')) return;
+            const id = this.selectedId || this.manualId;
+            const res = await api('/admin/memory/clear', 'POST', { telegram_id: parseInt(id) });
+            if (res?.ok) {
+                this.memory = null;
+                window.toast('Xotira tozalandi');
+            }
         }
     }
 }

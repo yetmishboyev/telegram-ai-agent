@@ -3,61 +3,145 @@
 {% block title %}Suhbat{% endblock %}
 
 {% block content %}
-<div x-data="chatDetail({{ telegram_id }})" x-init="init()">
-    <div class="flex items-center gap-4 mb-6">
-        <a href="/dashboard/chats" class="text-slate-400 hover:text-white text-sm">← Orqaga</a>
-        <div>
-            <h1 class="text-xl font-bold" x-text="userName"></h1>
-            <p class="text-slate-500 text-sm">Telegram ID: {{ telegram_id }}</p>
+<div class="flex flex-col h-full" x-data="chatDetail({{ telegram_id }})" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 px-5 py-3.5 border-b border-[#1a2035] flex-shrink-0">
+        <a href="/dashboard/chats" class="btn btn-ghost text-xs px-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </a>
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+            :style="`background: ${avatarColor({{ telegram_id }})}`"
+            x-text="initials(userName)"></div>
+        <div class="flex-1 min-w-0">
+            <div class="font-semibold text-slate-200 text-sm" x-text="userName || '...'"></div>
+            <div class="text-xs text-slate-600">Telegram ID: {{ telegram_id }}</div>
         </div>
-        <div class="ml-auto flex gap-2">
-            <button @click="showSend = !showSend" class="btn-primary text-sm">Xabar yuborish</button>
-            <button @click="clearMemory()" class="btn-danger text-sm">Xotirani tozalash</button>
+        <div class="flex items-center gap-2">
+            <button @click="showSend = !showSend"
+                class="btn btn-primary text-xs">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                </svg>
+                Xabar yuborish
+            </button>
+            <button @click="toggleBlock()"
+                class="btn text-xs border"
+                :class="isBlocked
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/15'
+                    : 'bg-red-500/10 text-red-400 border-red-500/25 hover:bg-red-500/15'">
+                <span x-text="isBlocked ? 'Blokdan chiqar' : 'Blokla'"></span>
+            </button>
+            <button @click="clearMemory()" class="btn btn-secondary text-xs">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                Xotirani tozalash
+            </button>
         </div>
     </div>
 
-    <!-- Send message form -->
-    <div x-show="showSend" class="card p-4 mb-4">
-        <textarea x-model="sendText" rows="3" placeholder="Xabar matni..."></textarea>
-        <div class="flex gap-2 mt-3">
-            <button @click="sendMessage()" class="btn-primary text-sm">Yuborish</button>
-            <button @click="showSend = false" class="text-slate-400 text-sm">Bekor qilish</button>
+    <!-- Send message panel -->
+    <div x-show="showSend" x-transition class="px-5 py-3 border-b border-[#1a2035] bg-[#0a0d1a] flex-shrink-0">
+        <div class="flex gap-2">
+            <input x-model="sendText" @keydown.enter.prevent="sendMessage()"
+                type="text" placeholder="Xabar yozing..." class="flex-1 text-sm py-2">
+            <button @click="sendMessage()" class="btn btn-primary text-xs" :disabled="!sendText.trim()">Yuborish</button>
+            <button @click="showSend = false" class="btn btn-ghost text-xs">Bekor</button>
         </div>
     </div>
 
-    <!-- Messages -->
-    <div class="space-y-3">
-        <template x-for="m in messages" :key="m.id">
-            <div class="card p-4">
-                <div class="flex items-start justify-between gap-4">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span :class="m.role === 'user' ? 'badge-yellow' : 'badge-green'"
-                                class="px-2 py-0.5 rounded text-xs font-medium border"
-                                x-text="m.role === 'user' ? 'Foydalanuvchi' : 'Agent'">
-                            </span>
-                            <span class="text-slate-500 text-xs" x-text="new Date(m.created_at).toLocaleString('uz')"></span>
-                            <span x-show="m.intent" class="text-slate-600 text-xs" x-text="m.intent"></span>
-                        </div>
-                        <p class="text-sm leading-relaxed" x-text="m.content"></p>
-                        <div x-show="m.agent_response" class="mt-3 pl-3 border-l-2 border-indigo-500">
-                            <div class="text-xs text-slate-500 mb-1">Agent javobi:</div>
-                            <p class="text-sm text-indigo-200" x-text="m.agent_response"></p>
-                            <div x-show="!m.was_sent" class="flex gap-2 mt-2">
-                                <button @click="approveMessage(m)" class="text-green-400 text-xs hover:text-green-300">Tasdiqlash</button>
-                                <button @click="editAndApprove(m)" class="text-yellow-400 text-xs hover:text-yellow-300">Tahrirlash</button>
-                            </div>
-                            <span x-show="m.was_sent" class="text-green-500 text-xs">✓ Yuborildi</span>
-                        </div>
-                    </div>
-                    <div class="flex flex-col items-end gap-1 text-xs text-slate-500">
-                        <span x-show="m.importance" x-text="'Muhimlik: '+(m.importance*100).toFixed(0)+'%'"></span>
-                        <span x-show="m.sentiment" x-text="m.sentiment"></span>
-                    </div>
-                </div>
+    <!-- Messages area -->
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-1" id="messages-container">
+
+        <!-- Loading -->
+        <template x-if="loading">
+            <div class="flex items-center justify-center py-8 text-slate-600 text-sm">
+                <svg class="w-5 h-5 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Xabarlar yuklanmoqda...
             </div>
         </template>
+
+        <!-- Empty -->
+        <div x-show="!loading && messages.length === 0"
+            class="flex flex-col items-center justify-center py-16 text-slate-600">
+            <svg class="w-12 h-12 mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+            <p class="text-sm">Hali xabarlar yo'q</p>
+        </div>
+
+        <template x-for="(m, idx) in messages" :key="m.id">
+            <div class="fade-up">
+                <!-- Date divider -->
+                <div x-show="idx === 0 || !isSameDay(messages[idx-1].created_at, m.created_at)"
+                    class="flex items-center gap-3 my-4">
+                    <div class="flex-1 h-px bg-[#1a2035]"></div>
+                    <span class="text-[10px] text-slate-600 font-medium"
+                        x-text="dayLabel(m.created_at)"></span>
+                    <div class="flex-1 h-px bg-[#1a2035]"></div>
+                </div>
+
+                <!-- User message (left) -->
+                <div x-show="m.role === 'user'" class="flex items-end gap-2.5 mb-2">
+                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mb-0.5"
+                        :style="`background: ${avatarColor({{ telegram_id }})}`"
+                        x-text="initials(userName)"></div>
+                    <div class="max-w-[65%]">
+                        <div class="bg-[#131929] border border-[#1a2035] rounded-2xl rounded-bl-sm px-4 py-2.5">
+                            <p class="text-sm text-slate-200 leading-relaxed" x-text="m.content"></p>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1 px-1">
+                            <span class="text-[10px] text-slate-600" x-text="fmtTime(m.created_at)"></span>
+                            <span x-show="m.intent && m.intent !== 'other'" class="badge badge-gray text-[9px] px-1.5 py-0" x-text="m.intent"></span>
+                            <span x-show="m.sentiment" class="badge text-[9px] px-1.5 py-0"
+                                :class="{
+                                    'badge-green': m.sentiment === 'positive',
+                                    'badge-red': m.sentiment === 'negative',
+                                    'badge-gray': m.sentiment === 'neutral'
+                                }" x-text="m.sentiment"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Agent response (right) -->
+                <div x-show="m.role === 'user' && m.agent_response" class="flex justify-end mb-3">
+                    <div class="max-w-[65%]">
+                        <div class="relative"
+                            :class="m.was_sent ? 'bg-indigo-600/80 border-indigo-500/40' : 'bg-amber-600/20 border-amber-500/30'"
+                            style="border-radius: 16px 16px 4px 16px; border-width: 1px; padding: 10px 16px;">
+                            <p class="text-sm leading-relaxed"
+                                :class="m.was_sent ? 'text-indigo-100' : 'text-amber-100'"
+                                x-text="m.agent_response"></p>
+                        </div>
+                        <div class="flex items-center justify-end gap-2 mt-1 px-1">
+                            <template x-if="!m.was_sent">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] text-amber-600 font-medium">Kutilmoqda</span>
+                                    <button @click="approve(m)" class="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold">✓ Tasdiqlash</button>
+                                    <button @click="editApprove(m)" class="text-[10px] text-slate-400 hover:text-slate-300">Tahrirlash</button>
+                                </div>
+                            </template>
+                            <span x-show="m.was_sent" class="text-[10px] text-indigo-400 flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                Yuborildi
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </template>
+
+        <!-- Scroll anchor -->
+        <div id="bottom-anchor"></div>
     </div>
+
 </div>
 {% endblock %}
 
@@ -67,38 +151,88 @@ function chatDetail(telegramId) {
     return {
         telegramId,
         userName: '',
+        isBlocked: false,
         messages: [],
+        loading: true,
         showSend: false,
         sendText: '',
         async init() {
-            const data = await api('/chats/' + telegramId + '/messages?limit=50');
+            const data = await api('/chats/' + telegramId + '/messages?limit=100');
             if (data) {
-                this.userName = data.user?.name || telegramId;
+                this.userName = data.user?.name || String(telegramId);
                 this.messages = (data.messages || []).reverse();
             }
+            // get blocked status
+            const users = await api('/chats/?limit=500');
+            if (users) {
+                const u = (users.users || []).find(u => u.telegram_id == telegramId);
+                if (u) this.isBlocked = u.is_blacklisted;
+            }
+            this.loading = false;
+            this.$nextTick(() => this.scrollBottom());
+        },
+        scrollBottom() {
+            const el = document.getElementById('bottom-anchor');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
         },
         async sendMessage() {
             if (!this.sendText.trim()) return;
-            await api('/chats/send', 'POST', { telegram_id: this.telegramId, text: this.sendText });
-            this.sendText = '';
-            this.showSend = false;
+            const res = await api('/chats/send', 'POST', {
+                telegram_id: this.telegramId,
+                text: this.sendText
+            });
+            if (res?.ok) {
+                window.toast('Xabar yuborildi');
+                this.sendText = '';
+                this.showSend = false;
+            } else {
+                window.toast('Yuborishda xato', 'error');
+            }
         },
-        async approveMessage(m) {
-            await api('/chats/approve', 'POST', { message_id: m.id });
-            m.was_sent = true;
+        async approve(m) {
+            const res = await api('/chats/approve', 'POST', { message_id: m.id });
+            if (res?.ok) {
+                m.was_sent = true;
+                window.toast('Javob yuborildi');
+            }
         },
-        async editAndApprove(m) {
+        async editApprove(m) {
             const text = prompt('Javobni tahrirlang:', m.agent_response);
-            if (text) {
-                await api('/chats/approve', 'POST', { message_id: m.id, text });
+            if (!text) return;
+            const res = await api('/chats/approve', 'POST', { message_id: m.id, text });
+            if (res?.ok) {
                 m.was_sent = true;
                 m.agent_response = text;
+                window.toast('Tahrirlangan javob yuborildi');
+            }
+        },
+        async toggleBlock() {
+            const method = this.isBlocked ? 'DELETE' : 'POST';
+            const res = await api(`/chats/${this.telegramId}/blacklist`, method);
+            if (res?.ok !== undefined) {
+                this.isBlocked = !this.isBlocked;
+                window.toast(
+                    this.isBlocked ? this.userName + ' bloklandi' : this.userName + ' blokdan chiqarildi',
+                    this.isBlocked ? 'warn' : 'success'
+                );
             }
         },
         async clearMemory() {
-            if (!confirm('Xotirani tozalashni tasdiqlaysizmi?')) return;
-            await api('/admin/memory/clear', 'POST', { telegram_id: this.telegramId });
-            alert('Xotira tozalandi');
+            if (!confirm('Xotirani tozalashni tasdiqlaysizmi? Bu amalni qaytarib bo\'lmaydi.')) return;
+            const res = await api('/admin/memory/clear', 'POST', { telegram_id: this.telegramId });
+            if (res?.ok) window.toast('Xotira tozalandi');
+        },
+        isSameDay(a, b) {
+            return new Date(a).toDateString() === new Date(b).toDateString();
+        },
+        dayLabel(iso) {
+            const d = new Date(iso);
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            if (d.toDateString() === today.toDateString()) return 'Bugun';
+            if (d.toDateString() === yesterday.toDateString()) return 'Kecha';
+            return d.toLocaleDateString('ru', { day: '2-digit', month: 'long' });
         }
     }
 }

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% set active_page = "tasks" %}
+{% block title %}Kunlik Reja{% endblock %}
+
+{% block content %}
+<div class="p-6" x-data="tasksPage()" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-5">
+        <div>
+            <h1 class="text-lg font-semibold text-slate-200">Kunlik Reja</h1>
+            <p class="text-xs text-slate-500 mt-0.5" x-text="todayLabel"></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Date nav -->
+            <button @click="prevDay()" class="btn btn-secondary text-xs px-2.5">‹</button>
+            <span class="text-sm text-slate-400 font-medium w-32 text-center" x-text="dateLabel"></span>
+            <button @click="nextDay()" class="btn btn-secondary text-xs px-2.5"
+                :disabled="isToday">›</button>
+            <button @click="goToday()" class="btn btn-secondary text-xs" x-show="!isToday">Bugun</button>
+            <button @click="showAdd = true" class="btn btn-primary text-xs">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Qo'shish
+            </button>
+        </div>
+    </div>
+
+    <!-- Add task form -->
+    <div x-show="showAdd" x-transition class="card p-5 mb-5">
+        <h3 class="text-sm font-semibold text-slate-300 mb-4">Yangi vazifa</h3>
+        <div class="grid grid-cols-4 gap-3 mb-3">
+            <!-- Type buttons -->
+            <template x-for="type in taskTypes" :key="type.key">
+                <button @click="newTask.type = type.key"
+                    class="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-sm"
+                    :class="newTask.type === type.key
+                        ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+                        : 'bg-[#080b14] border-[#1a2035] text-slate-500 hover:border-slate-600'">
+                    <span class="text-xl" x-text="type.emoji"></span>
+                    <span class="text-xs font-medium" x-text="type.label"></span>
+                </button>
+            </template>
+        </div>
+        <div class="grid grid-cols-3 gap-3 mb-3">
+            <div>
+                <label class="text-xs text-slate-500 mb-1 block">Boshlanish</label>
+                <input x-model="newTask.start" type="time" class="text-sm py-2">
+            </div>
+            <div>
+                <label class="text-xs text-slate-500 mb-1 block">Tugash (ixtiyoriy)</label>
+                <input x-model="newTask.end" type="time" class="text-sm py-2">
+            </div>
+            <div>
+                <label class="text-xs text-slate-500 mb-1 block">Sarlavha (ixtiyoriy)</label>
+                <input x-model="newTask.title" type="text" placeholder="Masalan: Team standup" class="text-sm py-2">
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button @click="addTask()" class="btn btn-primary text-sm" :disabled="saving">
+                <svg x-show="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Saqlash
+            </button>
+            <button @click="showAdd = false; resetForm()" class="btn btn-secondary text-sm">Bekor</button>
+        </div>
+    </div>
+
+    <!-- Tasks list -->
+    <div class="space-y-2">
+
+        <!-- Empty state -->
+        <div x-show="!loading && tasks.length === 0"
+            class="card flex flex-col items-center justify-center py-16 text-slate-600">
+            <svg class="w-12 h-12 mb-3 opacity-25" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <p class="text-sm mb-3">Hali vazifalar yo'q</p>
+            <button @click="showAdd = true" class="btn btn-primary text-xs">Birinchi vazifani qo'shish</button>
+        </div>
+
+        <!-- Loading -->
+        <template x-if="loading">
+            <template x-for="i in [1,2,3]" :key="i">
+                <div class="card p-4">
+                    <div class="flex items-center gap-3">
+                        <div class="skeleton w-10 h-10 rounded-xl flex-shrink-0"></div>
+                        <div class="flex-1 space-y-2">
+                            <div class="skeleton h-4 w-32"></div>
+                            <div class="skeleton h-3 w-20"></div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </template>
+
+        <!-- Task cards -->
+        <template x-for="t in tasks" :key="t.id">
+            <div class="card p-4 flex items-center gap-4 transition-all"
+                :class="t.is_done ? 'opacity-50' : ''">
+
+                <!-- Type icon -->
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                    :class="{
+                        'bg-blue-500/15': t.task_type === 'meeting',
+                        'bg-violet-500/15': t.task_type === 'conference',
+                        'bg-amber-500/15': t.task_type === 'class',
+                        'bg-emerald-500/15': t.task_type === 'other',
+                    }"
+                    x-text="t.emoji"></div>
+
+                <!-- Info -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-slate-200"
+                            :class="t.is_done ? 'line-through text-slate-500' : ''"
+                            x-text="t.type_name + (t.title ? ' — ' + t.title : '')"></span>
+                        <span x-show="isCurrentTask(t)"
+                            class="badge badge-green text-[10px] blink">● Hozir</span>
+                    </div>
+                    <div class="flex items-center gap-3 mt-0.5">
+                        <span x-show="t.start_time" class="text-xs text-slate-500">
+                            🕐 <span x-text="t.start_time"></span>
+                            <span x-show="t.end_time">– <span x-text="t.end_time"></span></span>
+                        </span>
+                        <span x-show="t.is_done" class="badge badge-green text-[10px]">Bajarildi</span>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button x-show="!t.is_done" @click="doneTask(t)"
+                        class="btn btn-secondary text-xs px-2.5 py-1.5">
+                        ✓ Bajarildi
+                    </button>
+                    <button @click="removeTask(t)"
+                        class="btn text-xs px-2.5 py-1.5 text-red-500/60 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20">
+                        🗑
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Summary -->
+    <div x-show="tasks.length > 0" class="mt-4 grid grid-cols-3 gap-3">
+        <div class="card-sm p-3 text-center">
+            <div class="text-xl font-bold text-slate-200" x-text="tasks.length"></div>
+            <div class="text-xs text-slate-600 mt-0.5">Jami vazifa</div>
+        </div>
+        <div class="card-sm p-3 text-center">
+            <div class="text-xl font-bold text-emerald-400"
+                x-text="tasks.filter(t => t.is_done).length"></div>
+            <div class="text-xs text-slate-600 mt-0.5">Bajarildi</div>
+        </div>
+        <div class="card-sm p-3 text-center">
+            <div class="text-xl font-bold text-indigo-400"
+                x-text="tasks.filter(t => !t.is_done).length"></div>
+            <div class="text-xs text-slate-600 mt-0.5">Qoldi</div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function tasksPage() {
+    return {
+        tasks: [],
+        loading: true,
+        saving: false,
+        showAdd: false,
+        currentDate: new Date(),
+        newTask: { type: 'meeting', title: '', start: '', end: '' },
+        taskTypes: [
+            { key: 'meeting',    emoji: '🤝', label: 'Yig\'ilish' },
+            { key: 'conference', emoji: '🎤', label: 'Konferensiya' },
+            { key: 'class',      emoji: '📚', label: 'Dars' },
+            { key: 'other',      emoji: '✅', label: 'Boshqa' },
+        ],
+        get isToday() {
+            const t = new Date();
+            return this.currentDate.toDateString() === t.toDateString();
+        },
+        get dateLabel() {
+            return this.currentDate.toLocaleDateString('ru', { day: '2-digit', month: 'long', year: 'numeric' });
+        },
+        get todayLabel() {
+            const d = this.currentDate;
+            const days = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
+            return days[d.getDay()];
+        },
+        async init() {
+            await this.loadTasks();
+        },
+        async loadTasks() {
+            this.loading = true;
+            const d = this.currentDate.toISOString().split('T')[0];
+            const data = await api('/tasks/date/' + d);
+            if (data) this.tasks = data;
+            this.loading = false;
+        },
+        async addTask() {
+            this.saving = true;
+            const body = {
+                task_type: this.newTask.type,
+                title: this.newTask.title || null,
+                start_time: this.newTask.start || null,
+                end_time: this.newTask.end || null,
+                task_date: this.currentDate.toISOString().split('T')[0],
+            };
+            const res = await api('/tasks/', 'POST', body);
+            if (res?.id) {
+                this.tasks.push(res);
+                this.tasks.sort((a, b) => (a.start_time || '99:99').localeCompare(b.start_time || '99:99'));
+                this.showAdd = false;
+                this.resetForm();
+                window.toast('Vazifa qo\'shildi');
+            } else {
+                window.toast('Xato yuz berdi', 'error');
+            }
+            this.saving = false;
+        },
+        async doneTask(t) {
+            const res = await api('/tasks/' + t.id + '/done', 'PATCH');
+            if (res) {
+                t.is_done = true;
+                window.toast('Bajarildi deb belgilandi');
+            }
+        },
+        async removeTask(t) {
+            if (!confirm('O\'chirishni tasdiqlaysizmi?')) return;
+            const res = await api('/tasks/' + t.id, 'DELETE');
+            if (res?.ok) {
+                this.tasks = this.tasks.filter(x => x.id !== t.id);
+                window.toast('Vazifa o\'chirildi', 'warn');
+            }
+        },
+        isCurrentTask(t) {
+            if (!this.isToday || !t.start_time) return false;
+            const now = new Date().toTimeString().slice(0, 5);
+            if (t.end_time) return t.start_time <= now && now <= t.end_time;
+            return t.start_time <= now && now <= t.start_time.slice(0, 3) + String(parseInt(t.start_time.slice(3)) + 59).padStart(2, '0');
+        },
+        prevDay() {
+            const d = new Date(this.currentDate);
+            d.setDate(d.getDate() - 1);
+            this.currentDate = d;
+            this.loadTasks();
+        },
+        nextDay() {
+            if (this.isToday) return;
+            const d = new Date(this.currentDate);
+            d.setDate(d.getDate() + 1);
+            this.currentDate = d;
+            this.loadTasks();
+        },
+        goToday() {
+            this.currentDate = new Date();
+            this.loadTasks();
+        },
+        resetForm() {
+            this.newTask = { type: 'meeting', title: '', start: '', end: '' };
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     telegram_api_hash: str = Field(..., description="Telegram API Hash")
     telegram_phone: str = Field(..., description="+998901234567")
     telegram_session_name: str = "shaxzodbek_agent"
+    telegram_bot_token: str = ""
+    owner_telegram_id: int = 0
+    reminder_hour: int = 7
 
     # --- AI Provider ---
     ai_provider: Literal["openai", "anthropic"] = "anthropic"

@@ -110,6 +110,7 @@ async def get_configs(
     return [{"key": c.key, "value": c.value, "description": c.description} for c in configs]
 
 
+
 @router.post("/config")
 async def update_config(
     body: ConfigUpdate,

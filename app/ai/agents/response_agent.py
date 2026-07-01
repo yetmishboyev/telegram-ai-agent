@@ -37,11 +37,15 @@ class ResponseAgent(BaseAgent):
         rag_context: str = "",
         relationship_type: str = "unknown",
         conversation_summary: str | None = None,
+        schedule_context: str = "",
+        style_examples: str = "",
     ) -> str:
         system_prompt = build_system_prompt(
             user=user,
             relationship_type=relationship_type,
             conversation_summary=conversation_summary,
+            schedule_context=schedule_context,
+            style_examples=style_examples,
         )
 
         if rag_context:

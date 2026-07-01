@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, date as DateType
 from enum import Enum as PyEnum
 from typing import Optional
 import uuid
 
 from sqlalchemy import (
-    BigInteger, Boolean, DateTime, Enum, Float, ForeignKey,
+    BigInteger, Boolean, Date, DateTime, Enum, Float, ForeignKey,
     Integer, JSON, String, Text, func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -222,6 +222,43 @@ class AdminUser(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class DailyTask(Base):
+    """Kunlik reja — bot orqali boshqariladi"""
+
+    __tablename__ = "daily_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[DateType] = mapped_column(Date, nullable=False, index=True)
+    task_type: Mapped[str] = mapped_column(String(32), nullable=False, default="other")
+    title: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    start_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    end_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ChannelPost(Base):
+    """Kanalga yuborilgan postlar — analitika uchun"""
+
+    __tablename__ = "channel_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
+    post_type: Mapped[str] = mapped_column(String(32), nullable=False)  # educational / news
+    topic: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    text_preview: Mapped[str] = mapped_column(String(512), nullable=False)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    reactions: Mapped[int] = mapped_column(Integer, default=0)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    views_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

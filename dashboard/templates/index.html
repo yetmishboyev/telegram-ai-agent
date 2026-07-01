@@ -3,18 +3,31 @@
 {% block title %}Asosiy{% endblock %}
 
 {% block content %}
-<div x-data="dashboard()" x-init="init()">
+<div class="p-6" x-data="homePage()" x-init="init()">
+
+    <!-- Header -->
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-xl font-bold">Boshqaruv paneli</h1>
-            <p class="text-slate-500 text-sm mt-1">Real-vaqt statistikasi</p>
+            <h1 class="text-lg font-semibold text-slate-200">Boshqaruv paneli</h1>
+            <p class="text-slate-500 text-xs mt-0.5">Real-vaqt statistika va monitoring</p>
         </div>
         <div class="flex items-center gap-3">
-            <span class="text-sm text-slate-400">Agent holati:</span>
+            <span class="text-xs text-slate-500" x-text="lastUpdated ? 'Yangilandi: ' + lastUpdated : ''"></span>
+            <button @click="load()" class="btn btn-secondary text-xs">
+                <svg class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Yangilash
+            </button>
+            <!-- Agent toggle -->
             <button @click="toggleAgent()"
-                :class="agentEnabled ? 'badge-green' : 'badge-red'"
-                class="px-4 py-1.5 rounded-full text-sm font-medium border cursor-pointer"
-                x-text="agentEnabled ? 'YOQILGAN' : 'O\'CHIRILGAN'">
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                :class="agentOn
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/15'
+                    : 'bg-red-500/10 text-red-400 border-red-500/25 hover:bg-red-500/15'">
+                <span class="w-1.5 h-1.5 rounded-full blink"
+                    :class="agentOn ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                <span x-text="agentOn ? 'Agent yoqilgan' : 'Agent o\'chirilgan'"></span>
             </button>
         </div>
     </div>
@@ -22,87 +35,281 @@
     <!-- Stats cards -->
     <div class="grid grid-cols-4 gap-4 mb-6">
         <div class="card p-5">
-            <div class="text-slate-400 text-sm mb-1">Jami foydalanuvchilar</div>
-            <div class="text-3xl font-bold" x-text="stats.total_users ?? '—'"></div>
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Foydalanuvchilar</span>
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-slate-100" x-text="stats.total_users ?? '—'"></div>
+            <div class="text-xs text-slate-600 mt-1">Jami ro'yxatdan o'tgan</div>
         </div>
+
         <div class="card p-5">
-            <div class="text-slate-400 text-sm mb-1">Jami xabarlar</div>
-            <div class="text-3xl font-bold" x-text="stats.total_messages ?? '—'"></div>
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Xabarlar</span>
+                <div class="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-slate-100" x-text="stats.total_messages ?? '—'"></div>
+            <div class="text-xs text-slate-600 mt-1">Jami qayta ishlangan</div>
         </div>
+
         <div class="card p-5">
-            <div class="text-slate-400 text-sm mb-1">Bugun yuborildi</div>
-            <div class="text-3xl font-bold text-green-400" x-text="stats.sent_today ?? '—'"></div>
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Bugun yuborildi</span>
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-emerald-400" x-text="stats.sent_today ?? '—'"></div>
+            <div class="text-xs text-slate-600 mt-1">Agentdan javoblar</div>
         </div>
+
         <div class="card p-5">
-            <div class="text-slate-400 text-sm mb-1">Spam bloklandi</div>
-            <div class="text-3xl font-bold text-red-400" x-text="stats.spam_blocked ?? '—'"></div>
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Spam bloklandi</span>
+                <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-red-400" x-text="stats.spam_blocked ?? '—'"></div>
+            <div class="text-xs text-slate-600 mt-1">Filterlangan xabarlar</div>
         </div>
     </div>
 
-    <!-- Recent chats -->
-    <div class="card overflow-hidden">
-        <div class="p-4 border-b border-[#2d3148] flex items-center justify-between">
-            <h2 class="font-semibold">Oxirgi suhbatlar</h2>
-            <a href="/dashboard/chats" class="text-indigo-400 text-sm hover:text-indigo-300">Barchasini ko'rish</a>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Foydalanuvchi</th>
-                    <th>Xabarlar</th>
-                    <th>Oxirgi faollik</th>
-                    <th>Holat</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                <template x-for="u in users" :key="u.id">
-                    <tr>
-                        <td>
-                            <div class="font-medium" x-text="u.name"></div>
-                            <div class="text-slate-500 text-xs" x-text="u.username ? '@'+u.username : ''"></div>
-                        </td>
-                        <td x-text="u.total_messages"></td>
-                        <td x-text="u.last_seen ? new Date(u.last_seen).toLocaleString('uz') : '—'"></td>
-                        <td>
-                            <span :class="u.is_blacklisted ? 'badge-red' : 'badge-green'"
-                                class="px-2 py-0.5 rounded text-xs font-medium border"
-                                x-text="u.is_blacklisted ? 'Bloklangan' : 'Faol'">
-                            </span>
-                        </td>
-                        <td>
-                            <a :href="'/dashboard/chats/'+u.telegram_id"
-                                class="text-indigo-400 text-sm hover:text-indigo-300">Ko'rish</a>
-                        </td>
-                    </tr>
+    <!-- Chart + Users -->
+    <div class="grid grid-cols-3 gap-4 mb-4">
+
+        <!-- Weekly chart -->
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-300">Haftalik faollik</h2>
+                    <p class="text-xs text-slate-600 mt-0.5">Oxirgi 7 kun</p>
+                </div>
+                <span class="badge badge-blue" x-text="weeklyTotal + ' xabar'"></span>
+            </div>
+            <div class="flex items-end gap-1.5 h-24">
+                <template x-for="d in weekly" :key="d.date">
+                    <div class="flex-1 flex flex-col items-center gap-1.5">
+                        <div class="w-full rounded-t relative group cursor-default transition-all"
+                            :class="d.count > 0 ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-[#1a2035]'"
+                            :style="`height: ${weeklyMax > 0 ? Math.max(3, Math.round((d.count / weeklyMax) * 88)) : 3}px`">
+                            <div x-show="d.count > 0"
+                                class="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-slate-200 text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                                x-text="d.count"></div>
+                        </div>
+                        <span class="text-[10px] text-slate-600 font-medium" x-text="d.label"></span>
+                    </div>
                 </template>
-            </tbody>
-        </table>
+                <template x-if="weekly.length === 0">
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="skeleton h-16 w-full rounded"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Recent users -->
+        <div class="card col-span-2 overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2035]">
+                <h2 class="text-sm font-semibold text-slate-300">Oxirgi suhbatlar</h2>
+                <a href="/dashboard/chats" class="text-xs text-indigo-400 hover:text-indigo-300">Barchasini ko'rish →</a>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Foydalanuvchi</th>
+                        <th>Xabarlar</th>
+                        <th>Oxirgi faollik</th>
+                        <th>Holat</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-if="loading && users.length === 0">
+                        <template x-for="i in [1,2,3,4]" :key="i">
+                            <tr>
+                                <td><div class="skeleton h-4 w-32"></div></td>
+                                <td><div class="skeleton h-4 w-8"></div></td>
+                                <td><div class="skeleton h-4 w-24"></div></td>
+                                <td><div class="skeleton h-4 w-16 rounded-full"></div></td>
+                                <td></td>
+                            </tr>
+                        </template>
+                    </template>
+                    <template x-for="u in users" :key="u.id">
+                        <tr>
+                            <td>
+                                <div class="flex items-center gap-2.5">
+                                    <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                        :style="`background: ${avatarColor(u.telegram_id)}`"
+                                        x-text="initials(u.name)"></div>
+                                    <div>
+                                        <div class="font-medium text-slate-200 text-sm" x-text="u.name"></div>
+                                        <div class="text-slate-600 text-xs" x-text="u.username ? '@'+u.username : ''"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-slate-400 text-sm" x-text="u.total_messages"></td>
+                            <td class="text-slate-500 text-xs" x-text="fmtDate(u.last_seen)"></td>
+                            <td>
+                                <span class="badge" :class="u.is_blacklisted ? 'badge-red' : 'badge-green'"
+                                    x-text="u.is_blacklisted ? 'Bloklangan' : 'Faol'"></span>
+                            </td>
+                            <td>
+                                <a :href="'/dashboard/chats/'+u.telegram_id"
+                                    class="text-indigo-400 text-xs hover:text-indigo-300 font-medium">Ko'rish</a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
     </div>
+
+    <!-- Bugungi Reja widget -->
+    <div class="card overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2035]">
+            <div class="flex items-center gap-2.5">
+                <h2 class="text-sm font-semibold text-slate-300">Bugungi Reja</h2>
+                <span x-show="tasks.length > 0" class="badge badge-blue"
+                    x-text="tasks.filter(t=>!t.is_done).length + ' ta qoldi'"></span>
+                <span x-show="tasks.length > 0 && tasks.filter(t=>t.is_done).length > 0"
+                    class="badge badge-green"
+                    x-text="tasks.filter(t=>t.is_done).length + ' ta bajarildi'"></span>
+            </div>
+            <a href="/dashboard/tasks" class="text-xs text-indigo-400 hover:text-indigo-300">Barchasini ko'rish →</a>
+        </div>
+
+        <!-- Loading -->
+        <template x-if="loading && tasks.length === 0">
+            <div class="p-4 flex gap-2">
+                <template x-for="i in [1,2,3]" :key="i">
+                    <div class="skeleton h-12 w-36 rounded-xl flex-shrink-0"></div>
+                </template>
+            </div>
+        </template>
+
+        <!-- Empty state -->
+        <div x-show="!loading && tasks.length === 0"
+            class="px-5 py-7 flex items-center gap-4 text-slate-600">
+            <svg class="w-8 h-8 opacity-25 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <div>
+                <p class="text-sm text-slate-500">Bugun hali vazifalar yo'q</p>
+                <a href="/dashboard/tasks" class="text-xs text-indigo-400 hover:text-indigo-300 mt-0.5 inline-block">Reja tuzish →</a>
+            </div>
+        </div>
+
+        <!-- Task pills -->
+        <div x-show="tasks.length > 0" class="p-4 flex flex-wrap gap-2">
+            <template x-for="t in tasks" :key="t.id">
+                <div class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all"
+                    :class="{
+                        'opacity-40': t.is_done,
+                        'bg-emerald-500/8 border-emerald-500/25 shadow-[0_0_12px_rgba(52,211,153,0.06)]': isCurrentTask(t) && !t.is_done,
+                        'bg-[#0d1220] border-[#1a2035]': !isCurrentTask(t) && !t.is_done,
+                        'bg-[#090c18] border-[#111827]': t.is_done,
+                    }">
+                    <span class="text-base leading-none" x-text="t.emoji"></span>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs font-medium truncate max-w-[140px]"
+                                :class="t.is_done ? 'line-through text-slate-600' : 'text-slate-300'"
+                                x-text="t.type_name + (t.title ? ': ' + t.title : '')"></span>
+                            <span x-show="isCurrentTask(t) && !t.is_done"
+                                class="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-400 blink"></span>
+                        </div>
+                        <div x-show="t.start_time" class="text-[10px] text-slate-600 mt-0.5">
+                            <span x-text="t.start_time"></span><span x-show="t.end_time">–<span x-text="t.end_time"></span></span>
+                        </div>
+                    </div>
+                    <button x-show="!t.is_done" @click="doneTask(t)"
+                        title="Bajarildi deb belgilash"
+                        class="ml-0.5 flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-[11px] text-emerald-500/60 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all">✓</button>
+                </div>
+            </template>
+            <a href="/dashboard/tasks"
+                class="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-dashed border-[#1a2035] text-slate-600 hover:text-indigo-400 hover:border-indigo-500/30 transition-all text-xs">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Qo'shish
+            </a>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function dashboard() {
+function homePage() {
     return {
         stats: {},
         users: [],
-        agentEnabled: true,
+        weekly: [],
+        tasks: [],
+        agentOn: true,
+        loading: true,
+        lastUpdated: '',
+        get weeklyMax() { return Math.max(1, ...this.weekly.map(d => d.count)); },
+        get weeklyTotal() { return this.weekly.reduce((s, d) => s + d.count, 0); },
         async init() {
-            const [s, u, status] = await Promise.all([
+            await this.load();
+            setInterval(() => this.load(), 60000);
+        },
+        async load() {
+            this.loading = true;
+            const [s, u, status, w, tk] = await Promise.all([
                 api('/stats/overview'),
-                api('/chats/?limit=10'),
+                api('/chats/?limit=8'),
                 api('/admin/agent/status'),
+                api('/stats/weekly'),
+                api('/tasks/today'),
             ]);
             if (s) this.stats = s;
             if (u) this.users = u.users || [];
-            if (status) this.agentEnabled = status.enabled;
+            if (status) this.agentOn = status.enabled;
+            if (w) this.weekly = w;
+            if (tk) this.tasks = tk;
+            this.lastUpdated = fmtTime(new Date().toISOString());
+            this.loading = false;
         },
         async toggleAgent() {
-            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentEnabled });
-            if (res) this.agentEnabled = res.enabled;
-        }
+            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentOn });
+            if (res) {
+                this.agentOn = res.enabled;
+                window.toast(res.enabled ? 'Agent yoqildi' : 'Agent o\'chirildi', res.enabled ? 'success' : 'warn');
+            }
+        },
+        async doneTask(t) {
+            const res = await api('/tasks/' + t.id + '/done', 'PATCH');
+            if (res) {
+                t.is_done = true;
+                window.toast('Bajarildi ✓');
+            }
+        },
+        isCurrentTask(t) {
+            if (!t.start_time) return false;
+            const now = new Date().toTimeString().slice(0, 5);
+            if (t.end_time) return t.start_time <= now && now <= t.end_time;
+            const startMin = parseInt(t.start_time.slice(0, 2)) * 60 + parseInt(t.start_time.slice(3));
+            const nowMin = parseInt(now.slice(0, 2)) * 60 + parseInt(now.slice(3));
+            return nowMin >= startMin && nowMin <= startMin + 59;
+        },
     }
 }
 </script>

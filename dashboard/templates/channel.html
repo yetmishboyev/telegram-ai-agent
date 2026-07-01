@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% set active_page = "channel" %}
+{% block title %}Kanal Analitika{% endblock %}
+
+{% block content %}
+<div class="p-6" x-data="channelPage()" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-lg font-semibold text-slate-200">📢 Kanal Analitika</h1>
+            <p class="text-slate-500 text-xs mt-0.5">@Yetmishboyev_Sh · PR manager paneli</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500" x-text="lastUpdated ? 'Yangilandi: ' + lastUpdated : ''"></span>
+            <button @click="refreshViews()" :disabled="refreshing"
+                class="btn btn-secondary text-xs" title="Ko'rishlarni Telegram'dan yangilash">
+                <svg class="w-3.5 h-3.5" :class="refreshing ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span x-text="refreshing ? 'Yangilanmoqda...' : 'Ko\'rishlarni yangilash'"></span>
+            </button>
+            <button @click="triggerPost('educational')" :disabled="posting"
+                class="btn btn-secondary text-xs">
+                🎓 Ta'limiy post
+            </button>
+            <button @click="triggerPost('news')" :disabled="posting"
+                class="btn btn-secondary text-xs">
+                🌐 Yangilik post
+            </button>
+            <button @click="triggerPost('digest')" :disabled="posting"
+                class="btn btn-primary text-xs">
+                📊 Haftalik dayjest
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Jami postlar</span>
+                <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-slate-100" x-text="stats.total_posts ?? '—'"></div>
+            <div class="flex gap-2 mt-1.5">
+                <span class="badge badge-purple text-[10px]" x-text="'🎓 ' + (stats.educational_count ?? 0)"></span>
+                <span class="badge badge-blue text-[10px]" x-text="'🌐 ' + (stats.news_count ?? 0)"></span>
+            </div>
+        </div>
+
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Jami ko'rishlar</span>
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-emerald-400" x-text="fmtNum(stats.total_views ?? 0)"></div>
+            <div class="text-xs text-slate-600 mt-1">Barcha postlar bo'yicha</div>
+        </div>
+
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">O'rtacha ko'rishlar</span>
+                <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-amber-400" x-text="fmtNum(stats.avg_views ?? 0)"></div>
+            <div class="flex gap-2 mt-1.5">
+                <span class="text-[10px] text-slate-600">🎓 <span x-text="fmtNum(stats.educational_avg_views ?? 0)"></span></span>
+                <span class="text-[10px] text-slate-600">🌐 <span x-text="fmtNum(stats.news_avg_views ?? 0)"></span></span>
+            </div>
+        </div>
+
+        <!-- Best Post -->
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Eng yaxshi post</span>
+                <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                    </svg>
+                </div>
+            </div>
+            <template x-if="stats.best_post">
+                <div>
+                    <div class="text-xl font-bold text-rose-400" x-text="fmtNum(stats.best_post?.views ?? 0) + ' ko\\'rish'"></div>
+                    <div class="text-xs text-slate-500 mt-1 line-clamp-2" x-text="stats.best_post?.text_preview"></div>
+                </div>
+            </template>
+            <template x-if="!stats.best_post">
+                <div class="text-sm text-slate-600">Hali ma'lumot yo'q</div>
+            </template>
+        </div>
+    </div>
+
+    <!-- PR Tavsiyalar -->
+    <div class="card p-5 mb-5" x-show="stats.total_posts > 0">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="text-base">🧠</span>
+            <h2 class="text-sm font-semibold text-slate-300">PR Manager Tavsiyalari</h2>
+            <span class="badge badge-purple text-[10px]">AI tahlil</span>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <!-- Eng yaxshi tur -->
+            <div class="bg-[#080b14] rounded-xl p-4 border border-[#1a2035]">
+                <div class="text-xs text-slate-500 mb-2">Qaysi tur yaxshiroq?</div>
+                <div class="text-sm font-semibold" :class="bestType === 'educational' ? 'text-purple-400' : 'text-blue-400'">
+                    <span x-text="bestType === 'educational' ? '🎓 Ta\'limiy postlar' : '🌐 Yangiliklar'"></span>
+                </div>
+                <div class="text-xs text-slate-600 mt-1">
+                    <span x-text="bestType === 'educational' ? (stats.educational_avg_views ?? 0) + ' o\'rtacha ko\'rish' : (stats.news_avg_views ?? 0) + ' o\'rtacha ko\'rish'"></span>
+                </div>
+            </div>
+            <!-- Chastota tavsiyasi -->
+            <div class="bg-[#080b14] rounded-xl p-4 border border-[#1a2035]">
+                <div class="text-xs text-slate-500 mb-2">Kunlik faollik</div>
+                <div class="text-sm font-semibold text-emerald-400">
+                    3 post / kun
+                </div>
+                <div class="text-xs text-slate-600 mt-1">09:00 · 12:00 · 16:00</div>
+            </div>
+            <!-- Umumiy holat -->
+            <div class="bg-[#080b14] rounded-xl p-4 border border-[#1a2035]">
+                <div class="text-xs text-slate-500 mb-2">Kanalning holati</div>
+                <div class="text-sm font-semibold" :class="stats.avg_views > 50 ? 'text-emerald-400' : stats.avg_views > 20 ? 'text-amber-400' : 'text-red-400'">
+                    <span x-text="stats.avg_views > 50 ? '🟢 Yaxshi' : stats.avg_views > 20 ? '🟡 O\'rtacha' : '🔴 Rivojlanish kerak'"></span>
+                </div>
+                <div class="text-xs text-slate-600 mt-1">
+                    <span x-text="stats.avg_views > 50 ? 'Obunachilarga qiziqarli' : stats.avg_views > 20 ? 'Kontentni yaxshilash mumkin' : 'Mavzularni diversifikatsiya qiling'"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Posts Table -->
+    <div class="card overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2035]">
+            <div class="flex items-center gap-3">
+                <h2 class="text-sm font-semibold text-slate-300">Barcha postlar</h2>
+                <span class="badge badge-gray" x-text="posts.length + ' ta'"></span>
+            </div>
+            <div class="flex gap-2">
+                <button @click="filter=''" class="btn btn-ghost text-xs" :class="filter==='' ? 'text-slate-200' : ''">Barchasi</button>
+                <button @click="filter='educational'" class="btn btn-ghost text-xs" :class="filter==='educational' ? 'text-purple-400' : ''">🎓 Ta'limiy</button>
+                <button @click="filter='news'" class="btn btn-ghost text-xs" :class="filter==='news' ? 'text-blue-400' : ''">🌐 Yangilik</button>
+            </div>
+        </div>
+
+        <template x-if="loading">
+            <div class="p-8 flex items-center justify-center">
+                <div class="flex items-center gap-2 text-slate-500 text-sm">
+                    <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Yuklanmoqda...
+                </div>
+            </div>
+        </template>
+
+        <template x-if="!loading && filteredPosts.length === 0">
+            <div class="p-10 text-center">
+                <div class="text-3xl mb-3">📭</div>
+                <p class="text-slate-500 text-sm">Hali postlar yo'q</p>
+                <p class="text-slate-600 text-xs mt-1">Birinchi postni yuborish uchun yuqoridagi tugmani bosing</p>
+            </div>
+        </template>
+
+        <template x-if="!loading && filteredPosts.length > 0">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Post</th>
+                        <th>Tur</th>
+                        <th class="text-center">👁 Ko'rishlar</th>
+                        <th>Sana</th>
+                        <th>Ko'rish</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="p in filteredPosts" :key="p.id">
+                        <tr>
+                            <td class="max-w-xs">
+                                <div class="text-xs text-slate-300 line-clamp-2 leading-relaxed" x-text="p.text_preview"></div>
+                                <div x-show="p.topic" class="text-[10px] text-slate-600 mt-1" x-text="'📌 ' + p.topic"></div>
+                            </td>
+                            <td>
+                                <span class="badge text-[10px]"
+                                    :class="p.post_type === 'educational' ? 'badge-purple' : 'badge-blue'"
+                                    x-text="p.post_type === 'educational' ? '🎓 Ta\'limiy' : '🌐 Yangilik'"></span>
+                            </td>
+                            <td class="text-center">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <span class="font-semibold text-sm"
+                                        :class="p.views > 100 ? 'text-emerald-400' : p.views > 30 ? 'text-amber-400' : 'text-slate-400'"
+                                        x-text="fmtNum(p.views)"></span>
+                                    <!-- Visual bar -->
+                                    <div class="w-16 h-1.5 bg-[#1a2035] rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all"
+                                            :class="p.views > 100 ? 'bg-emerald-500' : p.views > 30 ? 'bg-amber-500' : 'bg-slate-600'"
+                                            :style="`width: ${Math.min(100, maxViews > 0 ? (p.views / maxViews) * 100 : 0)}%`"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-slate-500 text-xs whitespace-nowrap" x-text="fmtDate(p.sent_at)"></td>
+                            <td>
+                                <template x-if="p.telegram_message_id">
+                                    <a :href="'https://t.me/Yetmishboyev_Sh/' + p.telegram_message_id"
+                                        target="_blank"
+                                        class="text-indigo-400 text-xs hover:text-indigo-300 font-medium">
+                                        Telegram ↗
+                                    </a>
+                                </template>
+                                <template x-if="!p.telegram_message_id">
+                                    <span class="text-slate-700 text-xs">—</span>
+                                </template>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </template>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function channelPage() {
+    return {
+        stats: {},
+        posts: [],
+        filter: '',
+        loading: true,
+        refreshing: false,
+        posting: false,
+        lastUpdated: '',
+
+        get filteredPosts() {
+            if (!this.filter) return this.posts;
+            return this.posts.filter(p => p.post_type === this.filter);
+        },
+        get maxViews() {
+            const vals = this.filteredPosts.map(p => p.views);
+            return Math.max(1, ...vals);
+        },
+        get bestType() {
+            const ea = this.stats.educational_avg_views ?? 0;
+            const na = this.stats.news_avg_views ?? 0;
+            return ea >= na ? 'educational' : 'news';
+        },
+
+        async init() {
+            await this.load();
+            setInterval(() => this.load(), 120000);
+        },
+
+        async load() {
+            this.loading = true;
+            const [s, p] = await Promise.all([
+                api('/channel/stats'),
+                api('/channel/posts'),
+            ]);
+            if (s) this.stats = s;
+            if (p) this.posts = p;
+            this.lastUpdated = fmtTime(new Date().toISOString());
+            this.loading = false;
+        },
+
+        async refreshViews() {
+            this.refreshing = true;
+            const r = await api('/channel/refresh-views', 'POST');
+            if (r?.ok) {
+                window.toast('Ko\'rishlar yangilanmoqda...', 'info');
+                setTimeout(() => this.load(), 5000);
+            } else {
+                window.toast('Xato yuz berdi', 'error');
+            }
+            setTimeout(() => { this.refreshing = false; }, 5000);
+        },
+
+        async triggerPost(type) {
+            this.posting = true;
+            const r = await api('/channel/post?post_type=' + type, 'POST');
+            if (r?.ok) {
+                window.toast(
+                    type === 'educational' ? '🎓 Ta\'limiy post tayyorlanmoqda...' : '🌐 Yangilik post tayyorlanmoqda...',
+                    'info'
+                );
+            } else {
+                window.toast('Xato yuz berdi', 'error');
+            }
+            setTimeout(() => { this.posting = false; }, 8000);
+        },
+
+        fmtNum(n) {
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return String(n);
+        },
+    }
+}
+</script>
+{% endblock %}

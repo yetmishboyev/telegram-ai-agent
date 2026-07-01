@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await create_admin_if_not_exists()
 
-    # Telegram clientni ishga tushirish
+    # Telegram UserBot ishga tushirish
     from app.services.telegram_service import telegram_service
     try:
         await telegram_service.start()
@@ -74,17 +74,36 @@ async def lifespan(app: FastAPI):
         logger.error(f"Telegram ulashda xato: {e}")
         telegram_task = None
 
+    # Telegram Bot (kunlik reja) ishga tushirish
+    from app.services.bot_service import bot_service
+    bot_task = None
+    try:
+        await bot_service.start()
+        bot_task = asyncio.create_task(bot_service.run_until_disconnected())
+    except Exception as e:
+        logger.error(f"Bot serviceda xato: {e}")
+
+    # Scheduler (ertalabki eslatma)
+    from app.services.scheduler import scheduler_service
+    try:
+        scheduler_service.start(reminder_hour=settings.reminder_hour)
+    except Exception as e:
+        logger.error(f"Schedulerda xato: {e}")
+
     yield
 
     # Cleanup
     logger.info("Agent to'xtatilmoqda...")
-    if telegram_task:
-        telegram_task.cancel()
-        try:
-            await telegram_task
-        except asyncio.CancelledError:
-            pass
+    scheduler_service.stop()
+    for task in [telegram_task, bot_task]:
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     await telegram_service.disconnect()
+    await bot_service.disconnect()
     logger.info("Agent to'xtatildi.")
 
 

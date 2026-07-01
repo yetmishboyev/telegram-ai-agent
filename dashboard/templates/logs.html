@@ -3,27 +3,106 @@
 {% block title %}Loglar{% endblock %}
 
 {% block content %}
-<div x-data="logsPage()" x-init="init()">
-    <div class="flex items-center justify-between mb-6">
-        <h1 class="text-xl font-bold">System Loglar</h1>
-        <button @click="init()" class="btn-primary text-sm">Yangilash</button>
+<div class="p-6" x-data="logsPage()" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-5">
+        <div>
+            <h1 class="text-lg font-semibold text-slate-200">System Loglar</h1>
+            <p class="text-slate-500 text-xs mt-0.5" x-text="filtered.length + ' ta yozuv ko\'rsatilmoqda'"></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="relative">
+                <svg class="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+                </svg>
+                <input x-model="search" @input="applyFilter()"
+                    type="text" placeholder="Qidirish..."
+                    class="pl-9 pr-3 py-2 text-sm" style="width:200px">
+            </div>
+            <!-- Auto-refresh toggle -->
+            <button @click="toggleAutoRefresh()"
+                class="btn text-xs border"
+                :class="autoRefresh
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                    : 'bg-[#131929] text-slate-500 border-[#1a2035]'">
+                <span class="w-1.5 h-1.5 rounded-full" :class="autoRefresh ? 'bg-emerald-400 blink' : 'bg-slate-600'"></span>
+                <span x-text="autoRefresh ? 'Avto: 5s' : 'Avto: off'"></span>
+            </button>
+            <button @click="loadLogs()" class="btn btn-secondary text-xs">
+                <svg class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Yangilash
+            </button>
+        </div>
     </div>
 
+    <!-- Level filters -->
+    <div class="flex items-center gap-2 mb-4">
+        <template x-for="lvl in ['ALL','INFO','WARNING','ERROR','DEBUG']" :key="lvl">
+            <button @click="levelFilter = lvl; applyFilter()"
+                class="px-3 py-1 rounded-lg text-xs font-semibold transition-all border"
+                :class="{
+                    'bg-slate-500/15 text-slate-300 border-slate-500/30': levelFilter === lvl && lvl === 'ALL',
+                    'bg-blue-500/15 text-blue-300 border-blue-500/30': levelFilter === lvl && lvl === 'INFO',
+                    'bg-yellow-500/15 text-yellow-300 border-yellow-500/30': levelFilter === lvl && lvl === 'WARNING',
+                    'bg-red-500/15 text-red-300 border-red-500/30': levelFilter === lvl && lvl === 'ERROR',
+                    'bg-slate-600/15 text-slate-500 border-slate-600/30': levelFilter === lvl && lvl === 'DEBUG',
+                    'text-slate-600 border-[#1a2035] hover:border-slate-600 hover:text-slate-500': levelFilter !== lvl,
+                }"
+                x-text="lvl">
+            </button>
+        </template>
+        <span class="ml-auto text-xs text-slate-600"
+            x-text="levelCounts.ERROR + ' xato, ' + levelCounts.WARNING + ' ogohlantirish'"></span>
+    </div>
+
+    <!-- Log table -->
     <div class="card overflow-hidden">
-        <div class="font-mono text-xs">
-            <template x-for="l in logs" :key="l.id">
-                <div class="flex gap-4 px-4 py-2 border-b border-[#1e2030] hover:bg-[#1e2030]">
-                    <span class="text-slate-500 w-40 flex-shrink-0" x-text="new Date(l.created_at).toLocaleTimeString('uz')"></span>
-                    <span :class="{
-                        'text-red-400': l.level === 'ERROR',
-                        'text-yellow-400': l.level === 'WARNING',
-                        'text-green-400': l.level === 'INFO',
-                        'text-slate-400': l.level === 'DEBUG',
-                    }" class="w-16 flex-shrink-0 font-bold" x-text="l.level"></span>
-                    <span class="text-indigo-400 w-32 flex-shrink-0" x-text="l.component"></span>
-                    <span class="text-slate-300 flex-1" x-text="l.message"></span>
+        <div class="font-mono">
+            <!-- Loading -->
+            <template x-if="loading && logs.length === 0">
+                <div class="flex items-center justify-center py-10 text-slate-600 text-sm gap-2">
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Loglar yuklanmoqda...
                 </div>
             </template>
+
+            <!-- Rows -->
+            <template x-for="l in filtered" :key="l.id">
+                <div class="flex gap-0 px-4 py-2 border-b border-[#0f1320] hover:bg-[#0a0d1a] transition-colors group text-xs"
+                    :class="{
+                        'border-l-2 border-l-red-600/60': l.level === 'ERROR',
+                        'border-l-2 border-l-yellow-600/60': l.level === 'WARNING',
+                    }">
+                    <span class="text-slate-600 flex-shrink-0 w-20" x-text="fmtTime(l.created_at)"></span>
+                    <span class="flex-shrink-0 w-20 font-bold"
+                        :class="{
+                            'text-red-400': l.level === 'ERROR',
+                            'text-yellow-400': l.level === 'WARNING',
+                            'text-emerald-400': l.level === 'INFO',
+                            'text-slate-500': l.level === 'DEBUG',
+                        }" x-text="l.level"></span>
+                    <span class="text-indigo-400/70 flex-shrink-0 w-36 truncate" x-text="l.component"></span>
+                    <span class="text-slate-400 flex-1 leading-relaxed" x-text="l.message"></span>
+                    <button @click="copyLog(l)"
+                        class="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-slate-600 hover:text-slate-400 flex-shrink-0">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </template>
+
+            <!-- Empty -->
+            <div x-show="!loading && filtered.length === 0"
+                class="flex flex-col items-center justify-center py-12 text-slate-600">
+                <p class="text-sm">Hech narsa topilmadi</p>
+            </div>
         </div>
     </div>
 </div>
@@ -34,9 +113,53 @@
 function logsPage() {
     return {
         logs: [],
+        filtered: [],
+        loading: false,
+        search: '',
+        levelFilter: 'ALL',
+        autoRefresh: false,
+        _timer: null,
+        get levelCounts() {
+            const c = { ERROR: 0, WARNING: 0, INFO: 0, DEBUG: 0 };
+            this.logs.forEach(l => { if (c[l.level] !== undefined) c[l.level]++; });
+            return c;
+        },
         async init() {
-            const data = await api('/stats/logs?limit=200');
+            await this.loadLogs();
+        },
+        async loadLogs() {
+            this.loading = true;
+            const data = await api('/stats/logs?limit=300');
             if (data) this.logs = data;
+            this.applyFilter();
+            this.loading = false;
+        },
+        applyFilter() {
+            let list = [...this.logs];
+            if (this.levelFilter !== 'ALL') list = list.filter(l => l.level === this.levelFilter);
+            if (this.search) {
+                const q = this.search.toLowerCase();
+                list = list.filter(l =>
+                    l.message.toLowerCase().includes(q) ||
+                    (l.component || '').toLowerCase().includes(q)
+                );
+            }
+            this.filtered = list;
+        },
+        toggleAutoRefresh() {
+            this.autoRefresh = !this.autoRefresh;
+            if (this.autoRefresh) {
+                this._timer = setInterval(() => this.loadLogs(), 5000);
+                window.toast('Avto-yangilash yoqildi (5s)', 'info');
+            } else {
+                clearInterval(this._timer);
+                window.toast('Avto-yangilash o\'chirildi', 'info');
+            }
+        },
+        copyLog(l) {
+            const text = `[${l.level}] ${l.component}: ${l.message}`;
+            navigator.clipboard?.writeText(text);
+            window.toast('Nusxalandi', 'info');
         }
     }
 }

@@ -3,74 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Telegram AI Agent{% endblock %} — Dashboard</title>
+    <title>{% block title %}Dashboard{% endblock %} — Shaxzodbek AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #0f1117; color: #e2e8f0; }
-        .card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 12px; }
-        .badge-green { background: #16a34a22; color: #4ade80; border: 1px solid #16a34a44; }
-        .badge-red { background: #dc262622; color: #f87171; border: 1px solid #dc262644; }
-        .badge-yellow { background: #d9770622; color: #fbbf24; border: 1px solid #d9770644; }
-        .btn-primary { background: #4f46e5; color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #080b14; color: #cbd5e1; }
+
+        .card { background: #0f1320; border: 1px solid #1a2035; border-radius: 12px; }
+        .card-sm { background: #0f1320; border: 1px solid #1a2035; border-radius: 8px; }
+
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
+        .badge-green { background: #16a34a15; color: #4ade80; border: 1px solid #16a34a30; }
+        .badge-red   { background: #dc262615; color: #f87171; border: 1px solid #dc262630; }
+        .badge-yellow{ background: #d9770615; color: #fbbf24; border: 1px solid #d9770630; }
+        .badge-blue  { background: #3b82f615; color: #60a5fa; border: 1px solid #3b82f630; }
+        .badge-purple{ background: #8b5cf615; color: #a78bfa; border: 1px solid #8b5cf630; }
+        .badge-gray  { background: #47556915; color: #94a3b8; border: 1px solid #47556930; }
+
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: none; outline: none; }
+        .btn-primary { background: #4f46e5; color: #fff; }
         .btn-primary:hover { background: #4338ca; }
-        .btn-danger { background: #dc2626; color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
-        .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; color: #94a3b8; font-size: 14px; font-weight: 500; transition: all 0.15s; }
-        .sidebar-link:hover, .sidebar-link.active { background: #4f46e522; color: #818cf8; }
-        input, textarea, select { background: #0f1117; border: 1px solid #2d3148; border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 14px; width: 100%; }
-        input:focus, textarea:focus { outline: none; border-color: #4f46e5; }
+        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-secondary { background: #131929; color: #94a3b8; border: 1px solid #1a2035; }
+        .btn-secondary:hover { background: #1a2035; color: #cbd5e1; }
+        .btn-danger { background: #991b1b; color: #fca5a5; border: 1px solid #7f1d1d; }
+        .btn-danger:hover { background: #7f1d1d; }
+        .btn-ghost { background: transparent; color: #64748b; padding: 6px 10px; }
+        .btn-ghost:hover { background: #131929; color: #94a3b8; }
+
+        .nav-link { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; color: #475569; font-size: 13px; font-weight: 500; transition: all 0.12s; text-decoration: none; }
+        .nav-link:hover { background: #131929; color: #94a3b8; }
+        .nav-link.active { background: #4f46e512; color: #818cf8; }
+
+        input, textarea, select {
+            background: #080b14; border: 1px solid #1a2035; border-radius: 8px;
+            padding: 8px 12px; color: #cbd5e1; font-size: 13.5px; width: 100%;
+            outline: none; transition: border-color 0.15s; font-family: inherit;
+        }
+        input:focus, textarea:focus, select:focus { border-color: #4f46e5; }
+        input::placeholder, textarea::placeholder { color: #334155; }
+
         table { width: 100%; border-collapse: collapse; }
-        th { background: #13151f; color: #94a3b8; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; }
-        td { padding: 12px 16px; border-bottom: 1px solid #1e2030; font-size: 14px; }
-        tr:hover td { background: #1e2030; }
+        th { background: #080b14; color: #334155; font-size: 10.5px; font-weight: 700;
+             text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 16px;
+             text-align: left; border-bottom: 1px solid #1a2035; }
+        td { padding: 11px 16px; border-bottom: 1px solid #0f1320; font-size: 13.5px; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: #0b0e1a; }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1a2035; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #253050; }
+
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .blink { animation: blink 2s ease-in-out infinite; }
+
+        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        .fade-up { animation: fadeUp 0.2s ease-out; }
+
+        @keyframes slideRight { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+        .slide-right { animation: slideRight 0.25s ease-out; }
+
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .skeleton {
+            background: linear-gradient(90deg, #0f1320 25%, #131929 50%, #0f1320 75%);
+            background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px;
+        }
+
+        .divider { border: none; border-top: 1px solid #1a2035; }
     </style>
 </head>
-<body x-data="{ token: localStorage.getItem('token') }">
+<body x-data="appShell()" x-init="init()">
+
+<!-- Toast notifications -->
+<div class="fixed top-4 right-4 z-[100] flex flex-col gap-2" style="pointer-events:none; min-width:260px; max-width:360px;">
+    <template x-for="t in toasts" :key="t.id">
+        <div class="slide-right flex items-start gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-2xl pointer-events-auto"
+            :class="{
+                'bg-[#052e16] text-green-300 border border-green-900': t.type==='success',
+                'bg-[#2d0707] text-red-300 border border-red-900': t.type==='error',
+                'bg-[#0f172a] text-indigo-300 border border-indigo-900': t.type==='info',
+                'bg-[#1c1003] text-yellow-300 border border-yellow-900': t.type==='warn',
+            }">
+            <span x-show="t.type==='success'" class="text-green-400 mt-0.5">✓</span>
+            <span x-show="t.type==='error'" class="text-red-400 mt-0.5">✕</span>
+            <span x-show="t.type==='info'" class="text-indigo-400 mt-0.5">ℹ</span>
+            <span x-show="t.type==='warn'" class="text-yellow-400 mt-0.5">⚠</span>
+            <span x-text="t.msg" class="flex-1 leading-snug"></span>
+        </div>
+    </template>
+</div>
 
 {% if request.url.path != '/dashboard/login' %}
 <div class="flex h-screen overflow-hidden">
+
     <!-- Sidebar -->
-    <aside class="w-64 flex-shrink-0 border-r border-[#2d3148] flex flex-col p-4">
-        <div class="flex items-center gap-3 mb-8 px-2">
-            <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">S</div>
-            <div>
-                <div class="font-semibold text-sm">Shaxzodbek</div>
-                <div class="text-xs text-slate-500">AI Agent</div>
+    <aside class="w-52 flex-shrink-0 flex flex-col border-r border-[#1a2035]">
+
+        <!-- Brand -->
+        <div class="p-4 pb-3">
+            <div class="flex items-center gap-2.5 px-1">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center font-bold text-white text-sm shadow-lg shadow-indigo-900/40">S</div>
+                <div>
+                    <div class="text-sm font-semibold text-slate-200 leading-none mb-1">Shaxzodbek</div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full blink flex-shrink-0"
+                            :class="tgOnline ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                        <span class="text-[11px] text-slate-500" x-text="tgOnline ? 'Telegram ulangan' : 'Ulanmagan'"></span>
+                    </div>
+                </div>
             </div>
         </div>
-        <nav class="space-y-1 flex-1">
-            <a href="/dashboard/" class="sidebar-link {% if active_page == 'home' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+
+        <hr class="divider mx-3 mb-2">
+
+        <!-- Navigation -->
+        <nav class="flex-1 px-2 space-y-0.5 overflow-y-auto py-1">
+            <a href="/dashboard/" class="nav-link {% if active_page == 'home' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
                 Asosiy
             </a>
-            <a href="/dashboard/chats" class="sidebar-link {% if active_page == 'chats' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+            <a href="/dashboard/chats" class="nav-link {% if active_page == 'chats' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                </svg>
                 Suhbatlar
             </a>
-            <a href="/dashboard/memory" class="sidebar-link {% if active_page == 'memory' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"></path></svg>
+            <a href="/dashboard/tasks" class="nav-link {% if active_page == 'tasks' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                Kunlik Reja
+            </a>
+            <a href="/dashboard/channel" class="nav-link {% if active_page == 'channel' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+                </svg>
+                Kanal
+            </a>
+            <a href="/dashboard/memory" class="nav-link {% if active_page == 'memory' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
                 Xotira
             </a>
-            <a href="/dashboard/logs" class="sidebar-link {% if active_page == 'logs' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <a href="/dashboard/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
                 Loglar
             </a>
-            <a href="/dashboard/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <a href="/dashboard/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
                 Sozlamalar
             </a>
         </nav>
-        <button onclick="localStorage.removeItem('token'); window.location.href='/dashboard/login'"
-            class="sidebar-link text-red-400 hover:text-red-300 mt-4">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-            Chiqish
-        </button>
+
+        <!-- Logout -->
+        <div class="p-2 border-t border-[#1a2035]">
+            <button @click="logout()"
+                class="nav-link w-full text-left text-red-500/70 hover:text-red-400 hover:bg-red-500/8">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                Chiqish
+            </button>
+        </div>
     </aside>
 
     <!-- Main content -->
-    <main class="flex-1 overflow-auto p-6">
+    <main class="flex-1 overflow-auto">
 {% endif %}
 
 {% block content %}{% endblock %}
@@ -81,18 +200,74 @@
 {% endif %}
 
 <script>
-// API helper
 async function api(path, method = 'GET', body = null) {
     const token = localStorage.getItem('token');
-    const opts = {
-        method,
-        headers: { 'Content-Type': 'application/json' }
-    };
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch('/api' + path, opts);
-    if (res.status === 401) { window.location.href = '/dashboard/login'; return null; }
-    return res.json();
+    try {
+        const res = await fetch('/api' + path, opts);
+        if (res.status === 401) {
+            if (window.location.pathname !== '/dashboard/login')
+                window.location.href = '/dashboard/login';
+            return null;
+        }
+        if (!res.ok) return null;
+        return await res.json();
+    } catch { return null; }
+}
+
+window.toast = (msg, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('show-toast', { detail: { msg, type } }));
+};
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString('ru', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtTime(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('ru', { hour:'2-digit', minute:'2-digit' });
+}
+
+function initials(name) {
+    if (!name) return '?';
+    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+const AVATAR_COLORS = [
+    '#4f46e5','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#9333ea','#0284c7'
+];
+function avatarColor(id) {
+    return AVATAR_COLORS[Math.abs(id || 0) % AVATAR_COLORS.length];
+}
+
+function appShell() {
+    return {
+        tgOnline: false,
+        toasts: [],
+        init() {
+            if (window.location.pathname === '/dashboard/login') return;
+            window.addEventListener('show-toast', e => {
+                const { msg, type } = e.detail;
+                const id = Date.now() + Math.random();
+                this.toasts.push({ id, msg, type });
+                setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 3500);
+            });
+            this.checkTelegram();
+            setInterval(() => this.checkTelegram(), 30000);
+        },
+        async checkTelegram() {
+            const d = await api('/stats/telegram');
+            this.tgOnline = d?.connected ?? false;
+        },
+        logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/dashboard/login';
+        }
+    }
 }
 </script>
 

@@ -42,3 +42,13 @@ async def dashboard_logs(request: Request):
 @router.get("/settings", response_class=HTMLResponse)
 async def dashboard_settings(request: Request):
     return templates.TemplateResponse(request, "settings.html")
+
+
+@router.get("/tasks", response_class=HTMLResponse)
+async def dashboard_tasks(request: Request):
+    return templates.TemplateResponse(request, "tasks.html")
+
+
+@router.get("/channel", response_class=HTMLResponse)
+async def dashboard_channel(request: Request):
+    return templates.TemplateResponse(request, "channel.html")

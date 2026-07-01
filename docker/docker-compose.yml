@@ -14,6 +14,8 @@ services:
     volumes:
       - ../sessions:/app/sessions
       - ../logs:/app/logs
+      - ../dashboard:/app/dashboard
+      - ../app:/app/app
     depends_on:
       postgres:
         condition: service_healthy

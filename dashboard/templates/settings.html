@@ -3,48 +3,130 @@
 {% block title %}Sozlamalar{% endblock %}
 
 {% block content %}
-<div x-data="settingsPage()" x-init="init()">
-    <h1 class="text-xl font-bold mb-6">Sozlamalar</h1>
+<div class="p-6" x-data="settingsPage()" x-init="init()">
 
-    <div class="grid grid-cols-2 gap-6">
-        <!-- Agent holati -->
+    <div class="mb-6">
+        <h1 class="text-lg font-semibold text-slate-200">Sozlamalar</h1>
+        <p class="text-slate-500 text-xs mt-0.5">Agent va tizim konfiguratsiyasi</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-5">
+
+        <!-- System status -->
         <div class="card p-5">
-            <h2 class="font-semibold mb-4">Agent holati</h2>
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="font-medium">Avtomatik javob</div>
-                    <div class="text-slate-500 text-sm mt-0.5">Barcha xabarlarga javob berish</div>
+            <h2 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+                </svg>
+                Tizim holati
+            </h2>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between py-2 border-b border-[#1a2035]">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full blink"
+                            :class="tgStatus.connected ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                        <span class="text-sm text-slate-400">Telegram</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium"
+                            :class="tgStatus.connected ? 'text-emerald-400' : 'text-red-400'"
+                            x-text="tgStatus.connected ? 'Ulangan' : 'Ulanmagan'"></span>
+                        <span x-show="tgStatus.user" class="text-xs text-slate-600" x-text="'@' + (tgStatus.user || '')"></span>
+                    </div>
                 </div>
-                <button @click="toggleAgent()"
-                    :class="agentEnabled ? 'bg-indigo-600' : 'bg-slate-600'"
-                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors">
-                    <span :class="agentEnabled ? 'translate-x-6' : 'translate-x-1'"
-                        class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform">
-                    </span>
-                </button>
+                <div class="flex items-center justify-between py-2 border-b border-[#1a2035]">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span class="text-sm text-slate-400">Dashboard</span>
+                    </div>
+                    <span class="text-sm font-medium text-emerald-400">Ishlayapti</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-[#1a2035]">
+                    <span class="text-sm text-slate-400">Jami foydalanuvchilar</span>
+                    <span class="text-sm font-medium text-slate-300" x-text="stats.total_users ?? '—'"></span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-[#1a2035]">
+                    <span class="text-sm text-slate-400">Jami xabarlar</span>
+                    <span class="text-sm font-medium text-slate-300" x-text="stats.total_messages ?? '—'"></span>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                    <span class="text-sm text-slate-400">Bugun yuborildi</span>
+                    <span class="text-sm font-medium text-emerald-400" x-text="stats.sent_today ?? '—'"></span>
+                </div>
             </div>
         </div>
 
-        <!-- Konfiguratsiya -->
+        <!-- Agent control -->
         <div class="card p-5">
-            <h2 class="font-semibold mb-4">Konfiguratsiya</h2>
-            <div class="space-y-3">
-                <template x-for="c in configs" :key="c.key">
+            <h2 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Agent boshqaruvi
+            </h2>
+            <div class="space-y-4">
+                <!-- Toggle -->
+                <div class="flex items-center justify-between p-3 bg-[#080b14] rounded-lg border border-[#1a2035]">
                     <div>
-                        <label class="text-xs text-slate-400 block mb-1" x-text="c.key"></label>
-                        <div class="flex gap-2">
-                            <input x-model="c.value" class="flex-1">
-                            <button @click="saveConfig(c)" class="btn-primary text-xs px-3">Saqlash</button>
+                        <div class="text-sm font-medium text-slate-300">Avtomatik javob</div>
+                        <div class="text-xs text-slate-600 mt-0.5">Barcha kiruvchi xabarlarga javob berish</div>
+                    </div>
+                    <button @click="toggleAgent()"
+                        class="relative inline-flex h-5 w-10 flex-shrink-0 rounded-full border border-transparent transition-colors duration-200 focus:outline-none cursor-pointer"
+                        :class="agentOn ? 'bg-indigo-600' : 'bg-[#1a2035]'">
+                        <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 mt-0.5"
+                            :class="agentOn ? 'translate-x-5' : 'translate-x-0.5'"></span>
+                    </button>
+                </div>
+
+                <div class="text-xs text-slate-600 p-3 bg-[#080b14] rounded-lg border border-[#1a2035]">
+                    <div class="font-medium text-slate-500 mb-1">Telegram sessiyasi</div>
+                    <div class="font-mono break-all text-slate-600">sessions/shaxzodbek_agent</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configurations -->
+        <div class="card p-5 col-span-2">
+            <h2 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Konfiguratsiya
+                <span class="ml-auto text-xs text-slate-600 font-normal" x-text="configs.length + ' ta parametr'"></span>
+            </h2>
+
+            <div x-show="configs.length > 0" class="divide-y divide-[#1a2035] mb-4">
+                <template x-for="c in configs" :key="c.key">
+                    <div class="flex items-center gap-4 py-3">
+                        <div class="w-48 flex-shrink-0">
+                            <div class="text-sm font-medium text-slate-400" x-text="c.key"></div>
+                            <div x-show="c.description" class="text-xs text-slate-600 mt-0.5" x-text="c.description"></div>
                         </div>
+                        <input x-model="c.value" class="flex-1 text-sm py-1.5">
+                        <button @click="saveConfig(c)" class="btn btn-primary text-xs flex-shrink-0">Saqlash</button>
                     </div>
                 </template>
-                <div class="flex gap-2 mt-4">
-                    <input x-model="newKey" placeholder="Kalit" class="flex-1">
-                    <input x-model="newValue" placeholder="Qiymat" class="flex-1">
-                    <button @click="addConfig()" class="btn-primary text-xs px-3">Qo'shish</button>
+            </div>
+
+            <div x-show="configs.length === 0 && !configLoading"
+                class="text-center text-slate-600 text-sm py-4 mb-4">
+                Hali konfiguratsiya yo'q
+            </div>
+
+            <!-- Add new config -->
+            <div class="p-3 bg-[#080b14] rounded-lg border border-[#1a2035]">
+                <div class="text-xs text-slate-600 font-medium mb-2">Yangi parametr qo'shish</div>
+                <div class="flex gap-2">
+                    <input x-model="newKey" placeholder="Kalit nomi" class="flex-1 text-sm py-1.5">
+                    <input x-model="newVal" placeholder="Qiymat" class="flex-1 text-sm py-1.5">
+                    <button @click="addConfig()" class="btn btn-secondary text-xs flex-shrink-0"
+                        :disabled="!newKey">Qo'shish</button>
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 {% endblock %}
@@ -53,31 +135,46 @@
 <script>
 function settingsPage() {
     return {
-        agentEnabled: true,
+        agentOn: true,
+        tgStatus: { connected: false, user: null },
+        stats: {},
         configs: [],
+        configLoading: true,
         newKey: '',
-        newValue: '',
+        newVal: '',
         async init() {
-            const [status, configs] = await Promise.all([
+            const [status, tg, s, cfgs] = await Promise.all([
                 api('/admin/agent/status'),
-                api('/admin/config')
+                api('/stats/telegram'),
+                api('/stats/overview'),
+                api('/admin/config'),
             ]);
-            if (status) this.agentEnabled = status.enabled;
-            if (configs) this.configs = configs;
+            if (status) this.agentOn = status.enabled;
+            if (tg) this.tgStatus = tg;
+            if (s) this.stats = s;
+            if (cfgs) this.configs = cfgs;
+            this.configLoading = false;
         },
         async toggleAgent() {
-            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentEnabled });
-            if (res) this.agentEnabled = res.enabled;
+            const res = await api('/admin/agent/toggle', 'POST', { enabled: !this.agentOn });
+            if (res) {
+                this.agentOn = res.enabled;
+                window.toast(res.enabled ? 'Agent yoqildi' : 'Agent o\'chirildi', res.enabled ? 'success' : 'warn');
+            }
         },
         async saveConfig(c) {
-            await api('/admin/config', 'POST', { key: c.key, value: c.value });
+            const res = await api('/admin/config', 'POST', { key: c.key, value: c.value });
+            if (res?.ok) window.toast(c.key + ' saqlandi');
         },
         async addConfig() {
             if (!this.newKey) return;
-            await api('/admin/config', 'POST', { key: this.newKey, value: this.newValue });
-            this.configs.push({ key: this.newKey, value: this.newValue });
-            this.newKey = '';
-            this.newValue = '';
+            const res = await api('/admin/config', 'POST', { key: this.newKey, value: this.newVal });
+            if (res?.ok) {
+                this.configs.push({ key: this.newKey, value: this.newVal, description: null });
+                window.toast(this.newKey + ' qo\'shildi');
+                this.newKey = '';
+                this.newVal = '';
+            }
         }
     }
 }
