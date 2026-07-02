@@ -28,7 +28,7 @@ class SchedulerService:
             trigger=CronTrigger(day_of_week="mon-fri", hour=9, minute=0, timezone=self._tz),
             id="channel_educational",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=3600,
         )
 
         # Du-Ju (0-4): 12:00 — AI yangiliklari post
@@ -37,7 +37,7 @@ class SchedulerService:
             trigger=CronTrigger(day_of_week="mon-fri", hour=12, minute=0, timezone=self._tz),
             id="channel_news_noon",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=3600,
         )
 
         # Du-Ju (0-4): 16:00 — AI yangiliklari post
@@ -46,7 +46,7 @@ class SchedulerService:
             trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=0, timezone=self._tz),
             id="channel_news_evening",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=3600,
         )
 
         # Yakshanba (6): 12:00 — Haftalik dayjest (faqat bitta post)
@@ -55,7 +55,7 @@ class SchedulerService:
             trigger=CronTrigger(day_of_week="sun", hour=12, minute=0, timezone=self._tz),
             id="channel_weekly_digest",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=3600,
         )
 
         # Har 2 soatda — kanal postlari ko'rishlarini yangilash
@@ -64,7 +64,7 @@ class SchedulerService:
             trigger=CronTrigger(hour="*/2", minute=30, timezone=self._tz),
             id="channel_views_refresh",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=3600,
         )
 
         self._scheduler.start()

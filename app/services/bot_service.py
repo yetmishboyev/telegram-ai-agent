@@ -404,8 +404,26 @@ class BotService:
     # ─── lifecycle ────────────────────────────────────────────────────────────
 
     async def run_until_disconnected(self) -> None:
-        if self._client:
-            await self._client.run_until_disconnected()
+        import asyncio
+        while True:
+            try:
+                if self._client:
+                    await self._client.run_until_disconnected()
+                logger.warning("Bot ulanishi uzildi. Qayta ulanmoqda...")
+            except Exception as e:
+                logger.error(f"Bot xatosi: {e}. 10 soniyadan keyin qayta ulanadi...")
+            await asyncio.sleep(10)
+            try:
+                if self._client:
+                    await self._client.connect()
+                    if await self._client.is_user_authorized():
+                        logger.info("Bot qayta ulandi")
+                        self._register_handlers()
+                    else:
+                        logger.error("Bot sessiyasi muddati tugagan")
+                        break
+            except Exception as e:
+                logger.error(f"Bot qayta ulanishda xato: {e}")
 
     async def disconnect(self) -> None:
         if self._client:
