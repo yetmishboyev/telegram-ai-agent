@@ -1,4 +1,5 @@
 import asyncio
+import re
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,54 @@ from app.database.models import SentimentType, ThreatLevel
 from app.repositories.message_repo import message_repo
 from app.repositories.user_repo import user_repo
 from app.config import settings
+
+# Maxfiy ma'lumot naqshlari — bu turdagi xabarlar Claude API ga YUBORILMAYDI
+_SENSITIVE_PATTERNS: list[tuple[str, re.Pattern]] = [
+    # Bank kartasi raqami: 16 xonali (bo'sh joyli yoki yo'q)
+    ("bank_card", re.compile(r"\b(?:\d[ \-]?){15,18}\d\b")),
+    # CVV/CVC: 3-4 xonali, kalit so'z bilan
+    ("cvv", re.compile(r"\b(?:cvv|cvc|cvv2|cvc2)\s*[:\-]?\s*\d{3,4}\b", re.I)),
+    # PIN kod
+    ("pin", re.compile(r"\b(?:pin|пин)\s*[:\-]?\s*\d{4,6}\b", re.I)),
+    # Parol
+    ("password", re.compile(r"\b(?:password|parol|пароль|парол)\s*[:\-]\s*\S+", re.I)),
+    # Passport raqami (O'zbekiston: AA1234567)
+    ("passport", re.compile(r"\b[A-Z]{2}\d{7}\b")),
+    # JSHSHIR (14 xonali shaxsiy raqam)
+    ("jshshir", re.compile(r"\b\d{14}\b")),
+    # Foydalanuvchi nomi + parol kombinatsiyasi
+    ("credentials", re.compile(r"\b(?:login|username|foydalanuvchi)\s*[:\-]\s*\S+", re.I)),
+    # OTP / tasdiqlash kodi
+    ("otp", re.compile(r"\b(?:otp|код|code|tasdiqlash kodi)\s*[:\-]?\s*\d{4,8}\b", re.I)),
+    # Kriptovalyuta wallet manzili (Bitcoin, Ethereum)
+    ("crypto_wallet", re.compile(r"\b(?:0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{6,87})\b")),
+]
+
+_SENSITIVE_REPLIES = {
+    "uz": (
+        "Bu xabar maxfiy ma'lumot (parol, karta raqami yoki shaxsiy hujjat) o'z ichiga olishi mumkin. "
+        "Xavfsizlik sababli AI ga yuborilmadi. "
+        "Shaxsiy ma'lumotlarni Telegram orqali ulashmang."
+    ),
+    "ru": (
+        "Это сообщение может содержать конфиденциальные данные (пароль, номер карты или личный документ). "
+        "В целях безопасности оно не было отправлено AI. "
+        "Не передавайте личные данные через Telegram."
+    ),
+    "en": (
+        "This message may contain sensitive information (password, card number, or personal document). "
+        "For security reasons, it was not sent to AI. "
+        "Please avoid sharing personal data via Telegram."
+    ),
+}
+
+
+def _detect_sensitive(text: str) -> str | None:
+    """Matnda maxfiy ma'lumot topilsa tur nomini qaytaradi, yo'q bo'lsa None."""
+    for name, pattern in _SENSITIVE_PATTERNS:
+        if pattern.search(text):
+            return name
+    return None
 
 
 class AIService:
@@ -44,6 +93,30 @@ class AIService:
                 telegram_message_id=telegram_message_id,
             )
             return msg, None
+
+        # 2b. Maxfiy ma'lumot filtri — Claude API ga yuborilmaydi
+        sensitive_type = _detect_sensitive(text)
+        if sensitive_type:
+            logger.warning(
+                f"Maxfiy ma'lumot aniqlandi [{sensitive_type}]: user={telegram_id} — API ga yuborilmadi"
+            )
+            msg = await message_repo.create(
+                db=db, user_id=user.id, role=MessageRole.USER,
+                content="[MAXFIY MA'LUMOT — saqlanmadi]",
+                message_type=message_type,
+                telegram_message_id=telegram_message_id,
+            )
+            # Tilni oddiy belgidan aniqlash (classifier ishga tushmaydi)
+            if re.search(r"[а-яёА-ЯЁ]", text):
+                lang = "ru"
+            elif re.search(r"[a-zA-Z]", text) and not re.search(r"[а-яёА-ЯЁа-яёА-ЯЁo'ʻ]", text):
+                lang = "en"
+            else:
+                lang = "uz"
+            reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
+            msg.agent_response = reply
+            await db.flush()
+            return msg, reply
 
         # 3. Agent yoqilganmi?
         from app.ai.memory.short_term import short_term_memory
