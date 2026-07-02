@@ -64,24 +64,32 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await create_admin_if_not_exists()
 
-    # Telegram UserBot ishga tushirish
+    # Telegram UserBot ishga tushirish (3 urinish — session lock race condition uchun)
     from app.services.telegram_service import telegram_service
-    try:
-        await telegram_service.start()
-        telegram_task = asyncio.create_task(telegram_service.run_until_disconnected())
-        logger.info("Telegram UserBot ulandi")
-    except Exception as e:
-        logger.error(f"Telegram ulashda xato: {e}")
-        telegram_task = None
+    telegram_task = None
+    for attempt in range(1, 4):
+        try:
+            await telegram_service.start()
+            telegram_task = asyncio.create_task(telegram_service.run_until_disconnected())
+            logger.info("Telegram UserBot ulandi")
+            break
+        except Exception as e:
+            logger.error(f"Telegram ulashda xato (urinish {attempt}/3): {e}")
+            if attempt < 3:
+                await asyncio.sleep(5)
 
-    # Telegram Bot (kunlik reja) ishga tushirish
+    # Telegram Bot (kunlik reja) ishga tushirish (3 urinish)
     from app.services.bot_service import bot_service
     bot_task = None
-    try:
-        await bot_service.start()
-        bot_task = asyncio.create_task(bot_service.run_until_disconnected())
-    except Exception as e:
-        logger.error(f"Bot serviceda xato: {e}")
+    for attempt in range(1, 4):
+        try:
+            await bot_service.start()
+            bot_task = asyncio.create_task(bot_service.run_until_disconnected())
+            break
+        except Exception as e:
+            logger.error(f"Bot serviceda xato (urinish {attempt}/3): {e}")
+            if attempt < 3:
+                await asyncio.sleep(5)
 
     # Scheduler (ertalabki eslatma)
     from app.services.scheduler import scheduler_service
