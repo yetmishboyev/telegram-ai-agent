@@ -257,7 +257,9 @@ class TelegramService:
                 await self._client.connect()
                 if await self._client.is_user_authorized():
                     logger.info("Telegram qayta ulandi")
-                    self._register_handlers()
+                    # _register_handlers() qayta CHAQIRILMAYDI —
+                    # Telethon handlerlarni disconnect/connect siklidayam saqlaydi,
+                    # qayta chaqirsak duplikat handlerlar qo'shiladi.
                 else:
                     logger.error("Telegram sessiyasi muddati tugagan")
                     break

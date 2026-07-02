@@ -69,6 +69,10 @@ class ChannelPoster:
         from app.services.bot_service import bot_service
         from app.ai.memory.short_term import short_term_memory
 
+        if not bot_service._client:
+            logger.warning("Bot client tayyor emas — post egaga yuborib bo'lmadi")
+            return
+
         post_id = str(uuid.uuid4())[:8]
         text_with_footer = _md_to_html(text.rstrip()) + CHANNEL_FOOTER_HTML
 

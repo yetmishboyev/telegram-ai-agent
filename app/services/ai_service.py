@@ -10,7 +10,7 @@ from app.ai.agents.classifier_agent import classifier_agent, MessageCategory
 from app.ai.agents.response_agent import response_agent
 from app.ai.agents.style_learner import style_learner
 from app.ai.memory.manager import memory_manager
-from app.ai.prompts.system_prompt import GREETING_RESPONSES, IMPORTANT_RESPONSES
+from app.ai.prompts.system_prompt import IMPORTANT_RESPONSES
 from app.database.models import TelegramUser, Message, MessageRole, MessageType
 from app.database.models import SentimentType, ThreatLevel
 from app.repositories.message_repo import message_repo
@@ -108,13 +108,7 @@ class AIService:
                 message_type=message_type,
                 telegram_message_id=telegram_message_id,
             )
-            # Tilni oddiy belgidan aniqlash (classifier ishga tushmaydi)
-            if re.search(r"[а-яёА-ЯЁ]", text):
-                lang = "ru"
-            elif re.search(r"[a-zA-Z]", text) and not re.search(r"[а-яёА-ЯЁа-яёА-ЯЁo'ʻ]", text):
-                lang = "en"
-            else:
-                lang = "uz"
+            lang = _detect_lang(text)
             reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
             msg.agent_response = reply
             await db.flush()

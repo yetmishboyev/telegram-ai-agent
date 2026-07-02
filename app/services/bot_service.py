@@ -418,7 +418,8 @@ class BotService:
                     await self._client.connect()
                     if await self._client.is_user_authorized():
                         logger.info("Bot qayta ulandi")
-                        self._register_handlers()
+                        # _register_handlers() qayta CHAQIRILMAYDI —
+                        # Telethon handlerlarni saqlab qoladi, duplikat qo'shmaslik uchun.
                     else:
                         logger.error("Bot sessiyasi muddati tugagan")
                         break
