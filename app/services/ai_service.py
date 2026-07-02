@@ -3,6 +3,8 @@ import re
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.guardrails import check_input, check_output, get_lang as _detect_lang
+
 from app.ai.agents.analysis_agent import analysis_agent, MessageAnalysis
 from app.ai.agents.classifier_agent import classifier_agent, MessageCategory
 from app.ai.agents.response_agent import response_agent
@@ -118,6 +120,21 @@ class AIService:
             await db.flush()
             return msg, reply
 
+        # 2c. Input guardrails — jailbreak, prompt injection, zararli niyat
+        input_guard = check_input(text)
+        if input_guard.blocked:
+            lang = _detect_lang(text)
+            reply = (input_guard.reply or {}).get(lang, (input_guard.reply or {}).get("uz", "Xabar bloklandi."))
+            msg = await message_repo.create(
+                db=db, user_id=user.id, role=MessageRole.USER,
+                content=f"[GUARDRAIL:{input_guard.category}]",
+                message_type=message_type,
+                telegram_message_id=telegram_message_id,
+            )
+            msg.agent_response = reply
+            await db.flush()
+            return msg, reply
+
         # 3. Agent yoqilganmi?
         from app.ai.memory.short_term import short_term_memory
         if not await short_term_memory.is_agent_enabled():
@@ -219,6 +236,19 @@ class AIService:
         except Exception as e:
             logger.error(f"Javob generatsiyada xato: {e}")
             return msg, None
+
+        # 9b. Output guardrails — AI javobi xavfli kontent yoki system leak bo'lmasin
+        output_guard = check_output(agent_response)
+        if output_guard.blocked:
+            from app.ai.guardrails import OUTPUT_FALLBACK
+            detected_lang = _detect_lang(text)
+            fallback = OUTPUT_FALLBACK.get(detected_lang, OUTPUT_FALLBACK["uz"])
+            msg.agent_response = fallback
+            await db.flush()
+            logger.warning(
+                f"[Guardrail/output] Javob almashtirildi: category={output_guard.category}, user={telegram_id}"
+            )
+            return msg, fallback
 
         # 10. Ishonch past → egaga bildirishnoma + tayyor javob
         if analysis.confidence < settings.confidence_threshold:
