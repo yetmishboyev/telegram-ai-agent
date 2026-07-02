@@ -9,6 +9,7 @@ from app.api.dependencies import get_current_admin
 from app.repositories.user_repo import user_repo
 from app.ai.memory.short_term import short_term_memory
 from app.ai.memory.manager import memory_manager
+from app.utils.security import verify_password, hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -31,6 +32,12 @@ class ConfigUpdate(BaseModel):
     key: str
     value: str
     description: str | None = None
+
+
+class ChangeCredentials(BaseModel):
+    current_password: str
+    new_username: str | None = None
+    new_password: str | None = None
 
 
 class ClearMemoryIn(BaseModel):
@@ -96,6 +103,37 @@ async def clear_user_memory(
     if not user:
         raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
     await memory_manager.clear_user(db, user)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/change-credentials")
+async def change_credentials(
+    body: ChangeCredentials,
+    db: AsyncSession = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+):
+    if not verify_password(body.current_password, current_admin.hashed_password):
+        raise HTTPException(status_code=400, detail="Joriy parol noto'g'ri")
+
+    if body.new_username:
+        if len(body.new_username) < 3:
+            raise HTTPException(status_code=400, detail="Username kamida 3 ta belgi bo'lishi kerak")
+        existing = await db.execute(
+            select(AdminUser).where(
+                AdminUser.username == body.new_username,
+                AdminUser.id != current_admin.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Bu username band")
+        current_admin.username = body.new_username
+
+    if body.new_password:
+        if len(body.new_password) < 8:
+            raise HTTPException(status_code=400, detail="Parol kamida 8 ta belgi bo'lishi kerak")
+        current_admin.hashed_password = hash_password(body.new_password)
+
     await db.commit()
     return {"ok": True}
 

@@ -86,6 +86,40 @@
             </div>
         </div>
 
+        <!-- Change credentials -->
+        <div class="card p-5 col-span-2">
+            <h2 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                </svg>
+                Login ma'lumotlarini o'zgartirish
+            </h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1.5">Joriy parol <span class="text-red-400">*</span></label>
+                    <input x-model="cred.current_password" type="password" placeholder="••••••••" class="w-full text-sm py-1.5">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1.5">Yangi username <span class="text-slate-600">(ixtiyoriy)</span></label>
+                    <input x-model="cred.new_username" type="text" placeholder="admin" class="w-full text-sm py-1.5">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1.5">Yangi parol <span class="text-slate-600">(kamida 8 ta belgi)</span></label>
+                    <input x-model="cred.new_password" type="password" placeholder="••••••••" class="w-full text-sm py-1.5">
+                </div>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <button @click="changeCredentials()"
+                    :disabled="!cred.current_password || credLoading"
+                    class="btn btn-primary text-xs"
+                    :class="(!cred.current_password || credLoading) ? 'opacity-50 cursor-not-allowed' : ''">
+                    <span x-show="!credLoading">Saqlash</span>
+                    <span x-show="credLoading">Saqlanmoqda...</span>
+                </button>
+                <p class="text-xs text-slate-600">Saqlangandan so'ng qayta kirishingiz kerak bo'ladi</p>
+            </div>
+        </div>
+
         <!-- Configurations -->
         <div class="card p-5 col-span-2">
             <h2 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
@@ -142,6 +176,8 @@ function settingsPage() {
         configLoading: true,
         newKey: '',
         newVal: '',
+        cred: { current_password: '', new_username: '', new_password: '' },
+        credLoading: false,
         async init() {
             const [status, tg, s, cfgs] = await Promise.all([
                 api('/admin/agent/status'),
@@ -174,6 +210,30 @@ function settingsPage() {
                 window.toast(this.newKey + ' qo\'shildi');
                 this.newKey = '';
                 this.newVal = '';
+            }
+        },
+        async changeCredentials() {
+            if (!this.cred.current_password) return;
+            if (!this.cred.new_username && !this.cred.new_password) {
+                window.toast('Yangi username yoki parol kiriting', 'warn');
+                return;
+            }
+            this.credLoading = true;
+            try {
+                const payload = { current_password: this.cred.current_password };
+                if (this.cred.new_username) payload.new_username = this.cred.new_username;
+                if (this.cred.new_password) payload.new_password = this.cred.new_password;
+                const res = await api('/admin/change-credentials', 'POST', payload);
+                if (res?.ok) {
+                    window.toast('Muvaffaqiyatli saqlandi! Qayta kiring.', 'success');
+                    this.cred = { current_password: '', new_username: '', new_password: '' };
+                    setTimeout(() => {
+                        localStorage.removeItem('token');
+                        window.location.href = '/dashboard/login';
+                    }, 1500);
+                }
+            } finally {
+                this.credLoading = false;
             }
         }
     }
