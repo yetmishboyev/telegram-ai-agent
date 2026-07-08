@@ -34,7 +34,7 @@ services:
     environment:
       POSTGRES_DB: telegram_agent
       POSTGRES_USER: agent
-      POSTGRES_PASSWORD: agent_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
