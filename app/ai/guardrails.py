@@ -132,6 +132,12 @@ _DEFAULT_INPUT_REPLY = {
 }
 
 
+def get_manipulation_reply(lang: str) -> str:
+    """LLM (analysis_agent) istalgan tilda prompt injection/jailbreak aniqlaganda ishlatiladigan javob."""
+    replies = _INPUT_REPLIES["prompt_injection"]
+    return replies.get(lang, replies["uz"])
+
+
 def check_input(text: str) -> GuardrailResult:
     """Kiruvchi xabarni tekshiradi. Bloklansa GuardrailResult(blocked=True) qaytaradi."""
     for category, pattern in _INPUT_RULES:

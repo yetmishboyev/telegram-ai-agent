@@ -3,7 +3,7 @@ import re
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.guardrails import check_input, check_output, get_lang as _detect_lang
+from app.ai.guardrails import check_input, check_output, get_manipulation_reply, get_lang as _detect_lang
 
 from app.ai.agents.analysis_agent import analysis_agent, MessageAnalysis
 from app.ai.agents.classifier_agent import classifier_agent, MessageCategory
@@ -176,15 +176,31 @@ class AIService:
             confidence_score=analysis.confidence,
         )
 
-        # 6. Spam / xavfli xabar filtri
-        if analysis.is_spam or analysis.threat_level in ("high", "medium"):
+        # 6. Spam / fishing / toksik / xavfli xabar filtri — javob berilmaydi
+        if (
+            analysis.is_spam
+            or analysis.is_phishing
+            or analysis.is_toxic
+            or analysis.threat_level in ("high", "medium")
+        ):
             logger.warning(
-                f"Filtrlandi: spam={analysis.is_spam}, threat={analysis.threat_level}, "
-                f"user={telegram_id}"
+                f"Filtrlandi: spam={analysis.is_spam}, phishing={analysis.is_phishing}, "
+                f"toxic={analysis.is_toxic}, threat={analysis.threat_level}, user={telegram_id}"
             )
             return msg, None
 
         lang = classification.language
+
+        # 6b. Manipulyatsiya / prompt injection — LLM orqali istalgan tilda aniqlanadi
+        # (guardrails.py dagi regex faqat inglizcha, bu qo'shimcha ko'p tilli qatlam)
+        if analysis.is_manipulative:
+            reply = get_manipulation_reply(lang)
+            logger.warning(
+                f"[Guardrail/LLM] Manipulyatsiya/prompt injection aniqlandi: user={telegram_id}"
+            )
+            msg.agent_response = reply
+            await db.flush()
+            return msg, reply
 
         # 7. GREETING — jadval bilan dinamik javob
         if classification.category == MessageCategory.GREETING:
