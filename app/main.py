@@ -9,7 +9,7 @@ from loguru import logger
 from pathlib import Path
 
 from app.config import settings
-from app.database.session import create_tables, AsyncSessionLocal
+from app.database.session import AsyncSessionLocal
 from app.database.models import AdminUser
 from app.utils.security import hash_password
 from app.middleware.logging import LoggingMiddleware
@@ -60,8 +60,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("=== Telegram AI Agent ishga tushmoqda ===")
 
-    # DB jadvallarini yaratish
-    await create_tables()
+    # DB jadvallari Alembic migratsiyalari orqali yaratiladi (Dockerfile CMD)
     await create_admin_if_not_exists()
 
     # Telegram UserBot ishga tushirish (3 urinish — session lock race condition uchun)
