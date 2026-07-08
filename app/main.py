@@ -144,4 +144,55 @@ if static_dir.exists():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "Telegram AI Agent v1.0"}
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text as sa_text
+    from app.database.session import engine
+    from app.ai.memory.short_term import short_term_memory
+    from app.ai.vector_db.chroma_client import chroma_client
+    from app.services.telegram_service import telegram_service
+    from app.services.bot_service import bot_service
+
+    checks: dict[str, str] = {}
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(sa_text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        logger.error(f"Health check: database xatosi: {e}")
+        checks["database"] = "error"
+
+    try:
+        r = await short_term_memory._get_redis()
+        await r.ping()
+        checks["redis"] = "ok"
+    except Exception as e:
+        logger.error(f"Health check: redis xatosi: {e}")
+        checks["redis"] = "error"
+
+    try:
+        await chroma_client.count()
+        checks["chromadb"] = "ok"
+    except Exception as e:
+        logger.error(f"Health check: chromadb xatosi: {e}")
+        checks["chromadb"] = "error"
+
+    checks["telegram_userbot"] = (
+        "connected" if telegram_service._client.is_connected() else "disconnected"
+    )
+    checks["telegram_bot"] = (
+        "connected"
+        if bot_service._client and bot_service._client.is_connected()
+        else "disconnected"
+    )
+
+    critical_ok = checks["database"] == "ok" and checks["redis"] == "ok"
+
+    return JSONResponse(
+        status_code=200 if critical_ok else 503,
+        content={
+            "status": "ok" if critical_ok else "degraded",
+            "agent": "Telegram AI Agent v1.0",
+            "checks": checks,
+        },
+    )

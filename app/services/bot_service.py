@@ -422,6 +422,16 @@ class BotService:
                         # Telethon handlerlarni saqlab qoladi, duplikat qo'shmaslik uchun.
                     else:
                         logger.error("Bot sessiyasi muddati tugagan")
+                        try:
+                            # Bot o'zi o'lgani uchun xabarni userbot orqali yuboramiz
+                            from app.services.telegram_service import telegram_service
+                            await telegram_service.send_message(
+                                self._owner_id,
+                                "⚠️ Bot sessiyasi muddati tugadi — qayta autentifikatsiya "
+                                "kerak. Kunlik reja va post tasdiqlash botlari ishlamayapti.",
+                            )
+                        except Exception as notify_err:
+                            logger.error(f"Uzilish haqida bildirishnoma yuborilmadi: {notify_err}")
                         break
             except Exception as e:
                 logger.error(f"Bot qayta ulanishda xato: {e}")

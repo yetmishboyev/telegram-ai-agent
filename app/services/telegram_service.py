@@ -262,6 +262,15 @@ class TelegramService:
                     # qayta chaqirsak duplikat handlerlar qo'shiladi.
                 else:
                     logger.error("Telegram sessiyasi muddati tugagan")
+                    try:
+                        from app.services.notification_service import notification_service
+                        await notification_service.notify_error(
+                            "Telegram UserBot",
+                            "Sessiya muddati tugadi — qayta autentifikatsiya qilish kerak. "
+                            "Agent endi shaxsiy xabarlarga javob bera olmaydi.",
+                        )
+                    except Exception as notify_err:
+                        logger.error(f"Uzilish haqida bildirishnoma yuborilmadi: {notify_err}")
                     break
             except Exception as e:
                 logger.error(f"Qayta ulanishda xato: {e}")
