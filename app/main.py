@@ -37,12 +37,15 @@ def configure_logging() -> None:
 
 
 async def create_admin_if_not_exists() -> None:
+    """Faqat admin_users jadvali BUTUNLAY bo'sh bo'lsa, .env dagi boshlang'ich adminni yaratadi.
+
+    Username bo'yicha qidirish emas — aks holda Sozlamalar sahifasidan
+    username/parol o'zgartirilgandan keyin har restart'da .env dagi eski
+    (potentsial sizib chiqqan) login qayta tirilib qolar edi.
+    """
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AdminUser).where(AdminUser.username == settings.admin_username)
-        )
-        admin = result.scalar_one_or_none()
-        if not admin:
+        result = await db.execute(select(AdminUser.id).limit(1))
+        if result.scalar_one_or_none() is None:
             admin = AdminUser(
                 username=settings.admin_username,
                 hashed_password=hash_password(settings.admin_password),
