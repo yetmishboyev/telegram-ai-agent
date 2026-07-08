@@ -66,11 +66,9 @@ services:
     restart: unless-stopped
     environment:
       ANONYMIZED_TELEMETRY: "false"
-      ALLOW_RESET: "true"
+      ALLOW_RESET: "false"
     volumes:
       - chroma_data:/chroma/chroma
-    ports:
-      - "8001:8000"
     networks:
       - agent-net
 
