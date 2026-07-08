@@ -96,30 +96,29 @@ class NewsFetcher(BaseAgent):
     async def generate_educational_post(self, topic: str) -> str:
         """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi."""
         prompt = f"""
-Sen sun'iy intellekt va texnologiya sohasidagi mutaxassissan. Quyidagi mavzu bo'yicha Telegram kanalga post tayyorla.
+Sen sun'iy intellekt sohasida 8-10 yillik tajribaga ega, o'z auditoriyasiga ega bo'lgan ekspert-muallifsan. Telegram kanalingga quyidagi mavzu bo'yicha post yozasan.
 
 Mavzu: {topic}
 
 Talablar:
+- Jonli inson yozgandek yoz — quruq, shablon yoki "AI yozgan" his qildiradigan ohangdan qoch. Xuddi tanishingga tushuntirayotgandek, samimiy va qiziqarli tarzda yoz.
+- O'zingning fikringni, kichik bir kuzatuvingni yoki qiziqarli detalni qo'sh — faqat quruq ta'rif bo'lmasin.
 - To'g'ri adabiy o'zbek tilida yoz. Grammatika xatolariga yo'l qo'yma.
 - So'zlarni to'g'ri qo'lla: "sun'iy intellekt" (suniy emas), "dastur" (dasturiy ta'minot), "foydalanuvchi" va hokazo.
+- Emojilarni faqat sarlavhalarda emas, matn ichida ham joyida va tabiiy ishlat (haddan tashqari ko'p bo'lmasin — mazmunni jonlantirish uchun).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
 - Hajmi: 220–280 so'z.
-- Quyidagi tuzilishda yoz:
+- Erkin tuzilishda yoz, lekin quyidagi mantiqiy oqimga amal qil (sarlavhalarni so'zma-so'z takrorlama, har safar biroz boshqacha ifodala):
 
-🎓 **[Mavzu sarlavhasi — aniq va qisqa]**
+🎓 **[Mavzu sarlavhasi — jozibali va qiziqtiradigan]**
 
-📌 **Nima bu?**
-[Oddiy va tushunarli tushuntirish, 2–3 gap. Atamani kundalik hayot bilan bog'lab tushuntir.]
+[Nima bu — oddiy tilda, kundalik hayot yoki tanish misol bilan boshlab tushuntir]
 
-💡 **Qanday ishlaydi?**
-[Qisqacha texnik tushuntirish. Mumkin bo'lsa, o'xshashlik yoki misol keltir.]
+[Qanday ishlaydi — qisqa, tushunarli, kerak bo'lsa o'xshatish bilan]
 
-🚀 **Qayerda qo'llaniladi?**
-[2–3 ta real hayotiy misol — ChatGPT, Google, tibbiyot, ta'lim va boshqalar.]
+[Qayerda qo'llaniladi — 2–3 ta real hayotiy misol]
 
-🔗 **Nima uchun muhim?**
-[Ushbu texnologiyaning sun'iy intellekt taraqqiyotidagi o'rni, 1–2 gap.]
+[Nega bu muhim — o'z fikring yoki qisqa xulosa bilan yakunla]
 
 #SuniyIntellekt #AI #Texnologiya #Dars
 """
@@ -140,14 +139,16 @@ Talablar:
         )
 
         prompt = f"""
-Sen sun'iy intellekt yangiliklari tahlilchisisisan. Quyidagi inglizcha manbalar asosida Telegram kanalga o'zbek tilidagi post tayyorla.
+Sen sun'iy intellekt yangiliklarini kuzatib boradigan, o'z auditoriyasiga ega tajribali tahlilchi-muallifsan. Quyidagi inglizcha manbalar asosida Telegram kanalga o'zbek tilida post tayyorla.
 
 Manbalar:
 {news_text}
 
 Talablar:
+- Jonli inson yozgandek yoz — quruq tarjima yoki shablon ko'rinishidan qoch. Har bir yangilikka o'z munosabatingni yoki qisqa sharhingni qo'sh (nega bu muhim, nima o'zgaradi).
 - To'g'ri adabiy o'zbek tilida yoz. Tarjimada ma'noni to'liq va aniq yetkazishga harakat qil.
 - Grammatika xatolariga yo'l qo'yma. Jumlalar ravon o'qilsin.
+- Emojilarni sarlavhalarda va matn ichida tabiiy tarzda ishlat — mazmunni jonlantirish uchun, lekin haddan oshirmasdan.
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
 - Har bir yangilik uchun 2–3 ta aniq va mazmunan to'g'ri gap yoz.
 - Quyidagi tuzilishda yoz:
@@ -155,13 +156,13 @@ Talablar:
 🌐 **AI Yangiliklari**
 
 1️⃣ **[1-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun, 2–3 gap. Asosiy g'oyani tushunarli tarzda yetkazib ber.]
+[Qisqa mazmun + o'z sharhing, 2–3 gap. Asosiy g'oyani tushunarli tarzda yetkazib ber.]
 
 2️⃣ **[2-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun, 2–3 gap.]
+[Qisqa mazmun + o'z sharhing, 2–3 gap.]
 
 3️⃣ **[3-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun, 2–3 gap.]
+[Qisqa mazmun + o'z sharhing, 2–3 gap.]
 
 #AI #SuniyIntellekt #Yangiliklar #Texnologiya
 """
@@ -174,8 +175,9 @@ Talablar:
     async def _generate_fallback_news_post(self) -> str:
         """Yangilik topilmasa, umumiy AI haqida post yozadi."""
         prompt = """
-Sun'iy intellekt sohasidagi bugungi eng dolzarb 3 ta tendensiya yoki yangilik haqida
-Telegram kanalga o'zbek tilida post tayyorla. Grammatikaga e'tibor ber, jumlalar ravon bo'lsin.
+Sen sun'iy intellekt sohasidagi tajribali ekspert-muallifsan. Bugungi eng dolzarb 3 ta tendensiya yoki yangilik haqida
+Telegram kanalga o'zbek tilida, jonli inson yozgandek (shablon emas), o'z fikringni ham qo'shib post tayyorla.
+Emojilarni matn ichida tabiiy ishlat. Grammatikaga e'tibor ber, jumlalar ravon bo'lsin.
 
 Tuzilish:
 🌐 **AI Yangiliklari**
@@ -283,9 +285,11 @@ Postlar:
 {items_text}
 
 Talablar:
+- Jonli inson — kanal muharriri — yozgandek, samimiy va qiziqarli ohangda yoz, shablon ko'rinishidan qoch.
 - To'g'ri adabiy o'zbek tilida, ravon va qiziqarli yoz.
+- Emojilarni matn ichida ham tabiiy tarzda ishlat.
 - HTML formatida yoz: sarlavhalar <b>qalin</b>, bo'limlar orasida bo'sh qator.
-- Har bir post uchun 1-2 jumlada qisqacha mazmun ber.
+- Har bir post uchun 1-2 jumlada qisqacha mazmun ber, mumkin bo'lsa o'z sharhingni qo'sh.
 - Har bir postning ostiga <a href="[post_link]">📖 Batafsil o'qish →</a> tugmasini qo'y.
 - Quyidagi tuzilishda yoz:
 
