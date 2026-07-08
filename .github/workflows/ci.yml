@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: telegram_agent_test
+          POSTGRES_USER: agent
+          POSTGRES_PASSWORD: agent_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U agent -d telegram_agent_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      TELEGRAM_API_ID: "12345"
+      TELEGRAM_API_HASH: "test_hash"
+      TELEGRAM_PHONE: "+998900000000"
+      AI_PROVIDER: "anthropic"
+      ANTHROPIC_API_KEY: "test-key"
+      DATABASE_URL: "postgresql+asyncpg://agent:agent_pass@localhost:5432/telegram_agent_test"
+      REDIS_URL: "redis://localhost:6379/0"
+      CHROMA_HOST: "localhost"
+      CHROMA_PORT: "8001"
+      SECRET_KEY: "ci-test-secret-key-not-used-in-production-0000"
+      ADMIN_PASSWORD: "ci-test-password"
+      ENVIRONMENT: "development"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        env:
+          UV_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+        run: uv sync --no-dev --no-install-project
+
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest -v
