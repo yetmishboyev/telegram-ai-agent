@@ -11,6 +11,7 @@ from app.ai.agents.response_agent import response_agent
 from app.ai.agents.style_learner import style_learner
 from app.ai.memory.manager import memory_manager
 from app.services.escalation_service import escalation_service
+from app.services.faq_service import faq_service
 from app.database.models import TelegramUser, Message, MessageRole, MessageType
 from app.database.models import SentimentType, ThreatLevel
 from app.database.session import AsyncSessionLocal
@@ -239,6 +240,16 @@ class AIService:
             await db.flush()
             await memory_manager.add_exchange(db, user, text, response)
             return msg, response
+
+        # 7b. FAQ / bilim bazasi — ega o'rgatgan javob semantik mos kelsa,
+        # eskalatsiya yoki generatsiya o'rniga autonom javob beriladi.
+        faq_answer = await faq_service.try_answer(text, lang)
+        if faq_answer:
+            logger.info(f"FAQ javobi: user={telegram_id}")
+            msg.agent_response = faq_answer
+            await db.flush()
+            await memory_manager.add_exchange(db, user, text, faq_answer)
+            return msg, faq_answer
 
         # 8. IMPORTANT — jadval bilan dinamik javob + egaga bildirishnoma
         if classification.category == MessageCategory.IMPORTANT or \

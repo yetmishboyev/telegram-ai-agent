@@ -261,6 +261,24 @@ class ChannelPost(Base):
     )
 
 
+class FaqEntry(Base):
+    """Bilim bazasi — ega o'rgatgan savol-javoblar (agent autonom javob berishi uchun)."""
+
+    __tablename__ = "faq_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    vector_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AgentLog(Base):
     """Agent faoliyati loglari"""
 

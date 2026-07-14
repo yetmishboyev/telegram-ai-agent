@@ -60,6 +60,35 @@ class RAGIndexer:
         )
         return doc_id
 
+    async def index_faq(self, faq_id: int, question: str, answer: str) -> str:
+        """FAQ savolini global miqyosda (type=faq) vektorlaydi.
+
+        Foydalanuvchi savoli aynan SAVOL matniga qarab moslanadi, shuning uchun
+        embedding savoldan olinadi; javob metadatada saqlanadi (hot-path'da DB
+        so'rovisiz javob berish uchun).
+        """
+        doc_id = f"faq_{faq_id}"
+        embedding = self._embedder.embed_one(question)
+        await chroma_client.upsert(
+            ids=[doc_id],
+            embeddings=[embedding],
+            documents=[question],
+            metadatas=[{
+                "type": "faq",
+                "faq_id": faq_id,
+                "answer": answer,
+            }],
+        )
+        logger.debug(f"FAQ indekslandi: {doc_id}")
+        return doc_id
+
+    async def remove_faq(self, vector_id: str) -> None:
+        try:
+            await chroma_client.delete(ids=[vector_id])
+            logger.debug(f"FAQ vektori o'chirildi: {vector_id}")
+        except Exception as e:
+            logger.warning(f"FAQ vektorini o'chirishda xato ({vector_id}): {e}")
+
     async def remove_user_data(self, user_id: int) -> None:
         await chroma_client.delete_by_user(user_id)
         logger.info(f"Foydalanuvchi {user_id} vektori o'chirildi")

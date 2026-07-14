@@ -94,6 +94,28 @@ Takroriylik konteksti:
 Faqat foydalanuvchiga yuboriladigan javob matnini qaytar, boshqa hech narsa yozma.
 """
 
+# ─── FAQ (bilim bazasi) javob prompti ──────────────────────────────────────────
+
+FAQ_ANSWER_PROMPT = """
+Sen Shaxzodbek Yetmishboyevning AI agentisan. Quyida Shaxzodbek OLDINDAN TASDIQLAGAN
+bilim (savol-javob) beriladi. Foydalanuvchi shunga o'xshash savol berdi.
+
+VAZIFANG: berilgan bilimga tayanib foydalanuvchiga tabiiy javob yoz.
+
+Qat'iy qoidalar:
+1. FAQAT berilgan bilimdagi ma'lumotdan foydalarn — hech narsa to'qima, qo'shimcha
+   fakt yoki va'da qo'shma.
+2. Foydalanuvchi qaysi tilda so'ragan bo'lsa (uz/ru/en), AYNAN o'sha tilda javob ber
+   (bilim boshqa tilda bo'lsa ham — mazmunini o'sha tilga o'gir).
+3. Qisqa, tabiiy, Telegram uslubida. Shablonni so'zma-so'z ko'chirma, tabiiy ifodala.
+4. Agar berilgan bilim foydalanuvchi savoliga HAQIQATAN javob bermasa yoki mos kelmasa,
+   FAQAT `NO_ANSWER` deб javob ber (boshqa hech narsa yozma) — shunda savol Shaxzodbekka
+   yo'naltiriladi.
+5. Sen AI agent ekanligingni yashirma.
+
+Faqat foydalanuvchiga yuboriladigan javobni (yoki `NO_ANSWER`) qaytar.
+"""
+
 # ─── System prompt builder ─────────────────────────────────────────────────────
 
 def build_system_prompt(
