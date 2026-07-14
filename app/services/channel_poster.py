@@ -62,7 +62,7 @@ class ChannelPoster:
             logger.error(f"ChannelPost saqlashda xato: {e}")
 
     async def _send_for_approval(
-        self, text: str, post_type: str, topic: str = ""
+        self, text: str, post_type: str, topic: str = "", style: str = ""
     ) -> None:
         """Postni egaga tasdiqlash uchun botda ko'rsatadi."""
         from telethon import Button
@@ -80,7 +80,10 @@ class ChannelPoster:
         await r.setex(
             f"pending_post:{post_id}",
             86400,
-            json.dumps({"text": text_with_footer, "post_type": post_type, "topic": topic}),
+            json.dumps({
+                "text": text_with_footer, "post_type": post_type,
+                "topic": topic, "style": style,
+            }),
         )
 
         labels = {
@@ -145,18 +148,22 @@ class ChannelPoster:
 
         post_type = data["post_type"]
         old_topic = data.get("topic", "")
+        style = data.get("style") or "chapani"
 
         if post_type == "educational":
             # Eski mavzudan farqli yangi mavzu tanlaymiz
             new_topic = news_fetcher.get_different_topic(old_topic)
             logger.info(f"Boshqa ta'limiy post: '{old_topic}' → '{new_topic}'")
-            new_text = await news_fetcher.generate_educational_post(new_topic)
-            await self._send_for_approval(new_text, "educational", new_topic)
+            new_text = await news_fetcher.generate_educational_post(new_topic, style)
+            await self._send_for_approval(new_text, "educational", new_topic, style)
+        elif post_type == "free":
+            new_text = await news_fetcher.generate_free_post(old_topic, style)
+            await self._send_for_approval(new_text, "free", old_topic, style)
         else:
             # Yangiliklar uchun tasodifiy tartibda oladi — boshqa maqolalar chiqadi
             news_items = await news_fetcher.get_ai_news_shuffled(count=3)
-            new_text = await news_fetcher.generate_news_post(news_items)
-            await self._send_for_approval(new_text, "news")
+            new_text = await news_fetcher.generate_news_post(news_items, style)
+            await self._send_for_approval(new_text, "news", "", style)
 
     async def refresh_views(self) -> None:
         """Kanalga yuborilgan postlarning ko'rish sonini Telegram'dan yangilaydi."""
@@ -245,24 +252,40 @@ class ChannelPoster:
     async def post_educational(self) -> None:
         """09:00 — AI ta'limiy post (egaga tasdiqlashga yuboriladi)."""
         try:
-            from app.services.news_fetcher import news_fetcher
+            from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
             topic = news_fetcher.get_todays_topic()
             logger.info(f"Ta'limiy post tayyorlanmoqda: {topic}")
-            text = await news_fetcher.generate_educational_post(topic)
-            await self._send_for_approval(text, "educational", topic)
+            text = await news_fetcher.generate_educational_post(topic, DEFAULT_STYLE)
+            await self._send_for_approval(text, "educational", topic, DEFAULT_STYLE)
         except Exception as e:
             logger.error(f"Ta'limiy post xatosi: {e}")
 
     async def post_news(self) -> None:
         """12:00 va 16:00 — AI yangiliklari post (egaga tasdiqlashga yuboriladi)."""
         try:
-            from app.services.news_fetcher import news_fetcher
+            from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
             logger.info("AI yangiliklari yig'ilmoqda...")
             news_items = await news_fetcher.get_ai_news(count=3)
-            text = await news_fetcher.generate_news_post(news_items)
-            await self._send_for_approval(text, "news")
+            text = await news_fetcher.generate_news_post(news_items, DEFAULT_STYLE)
+            await self._send_for_approval(text, "news", "", DEFAULT_STYLE)
         except Exception as e:
             logger.error(f"Yangiliklar post xatosi: {e}")
+
+    async def create_on_demand(self, post_type: str, style: str, topic: str = "") -> None:
+        """Bot menyusidan chaqiriladigan on-demand post yaratish (tur + uslub)."""
+        try:
+            from app.services.news_fetcher import news_fetcher
+            if post_type == "educational":
+                topic = topic or news_fetcher.get_todays_topic()
+                text = await news_fetcher.generate_educational_post(topic, style)
+            elif post_type == "news":
+                news_items = await news_fetcher.get_ai_news(count=3)
+                text = await news_fetcher.generate_news_post(news_items, style)
+            else:  # free — ega bergan mavzu
+                text = await news_fetcher.generate_free_post(topic, style)
+            await self._send_for_approval(text, post_type, topic, style)
+        except Exception as e:
+            logger.error(f"On-demand post xatosi: {e}")
 
 
 channel_poster = ChannelPoster()

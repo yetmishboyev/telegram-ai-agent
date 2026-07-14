@@ -18,7 +18,8 @@ MAIN_BUTTONS = [
     [Button.inline("📚 Dars",         b"add:class"),
      Button.inline("✅ Boshqa",        b"add:other")],
     [Button.inline("📋 Bugungi reja", b"view:today")],
-    [Button.inline("🧠 Bilim bazasi (FAQ)", b"faq:menu")],
+    [Button.inline("📢 Kanal posti", b"newpost:menu"),
+     Button.inline("🧠 Bilim bazasi", b"faq:menu")],
 ]
 
 CANCEL_ROW = [[Button.inline("❌ Bekor qilish", b"cancel")]]
@@ -26,6 +27,13 @@ CANCEL_ROW = [[Button.inline("❌ Bekor qilish", b"cancel")]]
 FAQ_BUTTONS = [
     [Button.inline("➕ Yangi FAQ qo'shish", b"faq:add")],
     [Button.inline("📋 FAQ ro'yxati", b"faq:list")],
+]
+
+NEWPOST_TYPE_BUTTONS = [
+    [Button.inline("🎓 Ta'limiy", b"newpost:type:educational"),
+     Button.inline("🌐 Yangilik", b"newpost:type:news")],
+    [Button.inline("✍️ Erkin mavzu", b"newpost:type:free")],
+    [Button.inline("🔙 Menyu", b"menu")],
 ]
 
 
@@ -120,6 +128,16 @@ class BotService:
 
         if step == "relaying":
             await self._handle_relay(event, state, text)
+            return
+
+        if step == "newpost_topic":
+            state.update(step="newpost_style", topic=text)
+            await self._set_state(state)
+            await self._client.send_message(
+                event.chat_id,
+                f"✍️ Mavzu: {text}\n\n🎨 Uslubni tanlang:",
+                buttons=self._style_buttons("newpost:genfree"),
+            )
             return
 
         if step == "faq_question":
@@ -251,6 +269,40 @@ class BotService:
             from app.services.faq_service import faq_service
             await faq_service.remove_faq(faq_id)
             await self._show_faq_list(event)
+
+        elif data == "newpost:menu":
+            await event.edit("📢 Qanday post yaratamiz?", buttons=NEWPOST_TYPE_BUTTONS)
+
+        elif data.startswith("newpost:type:"):
+            ptype = data.split(":")[2]
+            if ptype == "free":
+                await self._set_state({"step": "newpost_topic"})
+                await event.edit(
+                    "✍️ Post mavzusi yoki topshiriqni yozing (masalan: "
+                    "\"AI bilan biznesni avtomatlashtirish\"):",
+                    buttons=CANCEL_ROW,
+                )
+            else:
+                await event.edit(
+                    "🎨 Uslubni tanlang:", buttons=self._style_buttons(f"newpost:gen:{ptype}")
+                )
+
+        elif data.startswith("newpost:gen:"):
+            _, _, ptype, style = data.split(":")
+            await event.edit("⏳ Post tayyorlanmoqda — tasdiqlash uchun alohida keladi...")
+            import asyncio as _aio
+            from app.services.channel_poster import channel_poster
+            _aio.create_task(channel_poster.create_on_demand(ptype, style))
+
+        elif data.startswith("newpost:genfree:"):
+            style = data.split(":")[2]
+            state = await self._get_state()
+            topic = (state or {}).get("topic", "")
+            await self._set_state(None)
+            await event.edit("⏳ Post tayyorlanmoqda — tasdiqlash uchun alohida keladi...")
+            import asyncio as _aio
+            from app.services.channel_poster import channel_poster
+            _aio.create_task(channel_poster.create_on_demand("free", style, topic))
 
         elif data.startswith("approve_post:"):
             post_id = data.split(":", 1)[1]
@@ -442,6 +494,19 @@ class BotService:
                 return u.display_name if u else str(telegram_id)
         except Exception:
             return str(telegram_id)
+
+    # ─── kanal posti yaratish ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _style_buttons(action_prefix: str) -> list:
+        """Uslub tanlash tugmalari. action_prefix — masalan 'newpost:gen:educational'
+        yoki 'newpost:genfree'; oxiriga :{style} qo'shiladi."""
+        from app.services.news_fetcher import POST_STYLES
+        rows = []
+        for key, meta in POST_STYLES.items():
+            rows.append([Button.inline(meta["label"], f"{action_prefix}:{key}".encode())])
+        rows.append([Button.inline("❌ Bekor qilish", b"cancel")])
+        return rows
 
     # ─── bilim bazasi (FAQ) ─────────────────────────────────────────────────────
 
