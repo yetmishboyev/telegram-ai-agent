@@ -1,6 +1,6 @@
 from functools import lru_cache
 from typing import Literal
-from pydantic import Field, field_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,10 +64,15 @@ class Settings(BaseSettings):
     environment: Literal["development", "production"] = "production"
     log_level: str = "INFO"
 
-    @field_validator("ai_provider")
-    @classmethod
-    def validate_provider_keys(cls, v: str, info) -> str:
-        return v
+    @model_validator(mode="after")
+    def validate_provider_keys(self) -> "Settings":
+        key = self.anthropic_api_key if self.ai_provider == "anthropic" else self.openai_api_key
+        if not key:
+            raise ValueError(
+                f"ai_provider='{self.ai_provider}' tanlangan, lekin tegishli API kalit "
+                f"({'anthropic_api_key' if self.ai_provider == 'anthropic' else 'openai_api_key'}) bo'sh."
+            )
+        return self
 
     @property
     def active_model(self) -> str:

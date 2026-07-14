@@ -150,7 +150,7 @@ async def health():
     from fastapi.responses import JSONResponse
     from sqlalchemy import text as sa_text
     from app.database.session import engine
-    from app.ai.memory.short_term import short_term_memory
+    from app.database.redis import get_redis
     from app.ai.vector_db.chroma_client import chroma_client
     from app.services.telegram_service import telegram_service
     from app.services.bot_service import bot_service
@@ -166,7 +166,7 @@ async def health():
         checks["database"] = "error"
 
     try:
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         await r.ping()
         checks["redis"] = "ok"
     except Exception as e:

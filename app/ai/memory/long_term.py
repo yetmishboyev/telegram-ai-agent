@@ -3,8 +3,28 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.ai.guardrails import check_input
 from app.database.models import MemoryEntry, TelegramUser
 from app.ai.rag.indexer import rag_indexer
+
+_MAX_FACT_VALUE_LEN = 200
+
+
+def _sanitize_fact_value(value: str) -> str:
+    """Ajratilgan fakt qiymatini saqlashdan oldin tozalaydi.
+
+    Bu qiymat keyinchalik RAG orqali system promptga qaytishi mumkin
+    (ikkinchi-tartibli prompt-injection xavfi) — shuning uchun oddiy
+    foydalanuvchi xabari uchun ishlatiladigan guardrail bilan tekshiramiz
+    va uzunlikni cheklaymiz.
+    """
+    value = value.strip().replace("\n", " ").replace("\r", " ")
+    if not value:
+        return ""
+    if check_input(value).blocked:
+        logger.warning(f"Fakt qiymati bloklandi (guardrail): {value[:60]!r}")
+        return ""
+    return value[:_MAX_FACT_VALUE_LEN]
 
 
 class LongTermMemory:
@@ -77,7 +97,7 @@ class LongTermMemory:
         for fact in extracted_facts:
             category = fact.get("category", "fact")
             key = fact.get("key", "")
-            value = fact.get("value", "")
+            value = _sanitize_fact_value(str(fact.get("value", "")))
             importance = float(fact.get("importance", 0.5))
 
             if not key or not value:

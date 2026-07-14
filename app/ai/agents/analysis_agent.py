@@ -3,6 +3,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.agents.json_parse import parse_json_response
 from app.ai.prompts.system_prompt import ANALYSIS_PROMPT, MEMORY_EXTRACTION_PROMPT
 
 
@@ -36,13 +37,7 @@ class AnalysisAgent(BaseAgent):
                 temperature=0.1,
                 max_tokens=512,
             )
-            # JSON ni tozalab parse qilamiz
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            data = json.loads(raw)
+            data = parse_json_response(raw)
             return MessageAnalysis(**data)
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Tahlil parse xatosi: {e}. Default qaytarilmoqda.")
@@ -60,12 +55,7 @@ class AnalysisAgent(BaseAgent):
                 temperature=0.1,
                 max_tokens=512,
             )
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            facts = json.loads(raw)
+            facts = parse_json_response(raw)
             if isinstance(facts, list):
                 return facts
             return []

@@ -66,6 +66,22 @@ class ChromaDBClient:
             kwargs["where"] = where
         return await collection.query(**kwargs)
 
+    async def get(
+        self,
+        where: dict | None = None,
+        limit: int | None = None,
+        include: list[str] | None = None,
+    ) -> dict:
+        collection = await self.get_collection()
+        kwargs: dict = {}
+        if where:
+            kwargs["where"] = where
+        if limit:
+            kwargs["limit"] = limit
+        if include:
+            kwargs["include"] = include
+        return await collection.get(**kwargs)
+
     async def delete(self, ids: list[str]) -> None:
         collection = await self.get_collection()
         await collection.delete(ids=ids)

@@ -7,7 +7,8 @@ from app.ai.vector_db.chroma_client import chroma_client
 
 OWNER_USER_ID = -1  # Egani oddiy foydalanuvchilardan ajratish uchun
 STYLE_DOC_TYPE = "owner_style"
-MAX_STYLE_EXAMPLES = 5
+MAX_STYLE_EXAMPLES = 5  # get_style_context() nechta namuna qaytarishi
+MAX_STORED_STYLE_EXAMPLES = 50  # jami saqlanadigan namunalar chegarasi
 
 
 class StyleLearner:
@@ -17,13 +18,32 @@ class StyleLearner:
         self._embedder = get_embedder()
 
     async def learn(self, owner_message: str) -> None:
-        """Eganing xabarini uslub namunasi sifatida saqlaydi."""
+        """Eganing xabarini uslub namunasi sifatida saqlaydi.
+
+        Aynan bir xil matn allaqachon saqlangan bo'lsa o'tkazib yuboriladi
+        (dedup), va jami namunalar soni `MAX_STORED_STYLE_EXAMPLES`dan
+        oshsa, eng eskisi o'chiriladi (roadmap Faza 3, band 7).
+        """
         text = owner_message.strip()
         if not text or len(text) < 3:
             return
 
-        doc_id = str(uuid.uuid4())
         try:
+            existing = await chroma_client.get(
+                where={"type": STYLE_DOC_TYPE},
+                include=["documents", "metadatas"],
+            )
+            existing_ids: list[str] = existing.get("ids", [])
+            existing_docs: list[str] = existing.get("documents", [])
+            existing_metas: list[dict] = existing.get("metadatas", [])
+
+            normalized_new = text.lower()
+            if any(doc.strip().lower() == normalized_new for doc in existing_docs):
+                logger.debug(f"Uslub namunasi allaqachon mavjud, o'tkazib yuborildi: {text[:60]!r}")
+                return
+
+            doc_id = str(uuid.uuid4())
+            saved_at = datetime.now(timezone.utc).isoformat()
             embedding = self._embedder.embed_one(text)
             await chroma_client.upsert(
                 ids=[doc_id],
@@ -32,10 +52,18 @@ class StyleLearner:
                 metadatas=[{
                     "user_id": OWNER_USER_ID,
                     "type": STYLE_DOC_TYPE,
-                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                    "saved_at": saved_at,
                 }],
             )
             logger.debug(f"Uslub namunasi saqlandi: {text[:60]!r}")
+
+            all_entries = list(zip(existing_ids, [m.get("saved_at", "") for m in existing_metas]))
+            all_entries.append((doc_id, saved_at))
+            overflow = len(all_entries) - MAX_STORED_STYLE_EXAMPLES
+            if overflow > 0:
+                oldest_ids = [i for i, _ in sorted(all_entries, key=lambda pair: pair[1])[:overflow]]
+                await chroma_client.delete(ids=oldest_ids)
+                logger.debug(f"{len(oldest_ids)} ta eski uslub namunasi o'chirildi (chegara: {MAX_STORED_STYLE_EXAMPLES})")
         except Exception as e:
             logger.warning(f"Uslub saqlashda xato: {e}")
 

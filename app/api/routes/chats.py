@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -5,6 +7,7 @@ from pydantic import BaseModel
 from app.database.session import get_db
 from app.database.models import AdminUser, Message
 from app.api.dependencies import get_current_admin
+from app.ai.agents.style_learner import style_learner
 from app.repositories.user_repo import user_repo
 from app.repositories.message_repo import message_repo
 from app.services.telegram_service import telegram_service
@@ -160,7 +163,6 @@ async def approve_response(
     if not final_text:
         raise HTTPException(status_code=400, detail="Yuborish uchun matn yo'q")
 
-    user = await user_repo.get_by_telegram_id(db, msg.user_id)
     # user_id bu erda TelegramUser.id — telegram_id emas
     from sqlalchemy import select as sel
     from app.database.models import TelegramUser
@@ -174,5 +176,7 @@ async def approve_response(
     msg.was_approved = True
     if body.text:
         msg.admin_override = body.text
+        # Eganing tuzatgan yakuniy matni — eng qimmatli uslub signali (fon vazifasi)
+        asyncio.create_task(style_learner.learn(body.text))
     await db.commit()
     return {"ok": True}

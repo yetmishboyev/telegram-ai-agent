@@ -13,13 +13,16 @@ from app.ai.memory.manager import memory_manager
 from app.ai.prompts.system_prompt import IMPORTANT_RESPONSES
 from app.database.models import TelegramUser, Message, MessageRole, MessageType
 from app.database.models import SentimentType, ThreatLevel
+from app.database.session import AsyncSessionLocal
 from app.repositories.message_repo import message_repo
 from app.repositories.user_repo import user_repo
 from app.config import settings
 
 # Maxfiy ma'lumot naqshlari — bu turdagi xabarlar Claude API ga YUBORILMAYDI
 _SENSITIVE_PATTERNS: list[tuple[str, re.Pattern]] = [
-    # Bank kartasi raqami: 16 xonali (bo'sh joyli yoki yo'q)
+    # Bank kartasi raqami: 16-19 xonali (bo'sh joyli yoki yo'q) — Luhn tekshiruvi
+    # bilan birga qo'llaniladi (pastdagi _detect_sensitive'ga qarang), aks holda
+    # istalgan uzun raqam ketma-ketligi (buyurtma raqami va h.k.) bloklanib qolardi.
     ("bank_card", re.compile(r"\b(?:\d[ \-]?){15,18}\d\b")),
     # CVV/CVC: 3-4 xonali, kalit so'z bilan
     ("cvv", re.compile(r"\b(?:cvv|cvc|cvv2|cvc2)\s*[:\-]?\s*\d{3,4}\b", re.I)),
@@ -29,8 +32,10 @@ _SENSITIVE_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("password", re.compile(r"\b(?:password|parol|пароль|парол)\s*[:\-]\s*\S+", re.I)),
     # Passport raqami (O'zbekiston: AA1234567)
     ("passport", re.compile(r"\b[A-Z]{2}\d{7}\b")),
-    # JSHSHIR (14 xonali shaxsiy raqam)
-    ("jshshir", re.compile(r"\b\d{14}\b")),
+    # JSHSHIR (14 xonali shaxsiy raqam) — kontekst kalit so'zi (jshshir/pinfl)
+    # raqamdan oldin kelishi talab qilinadi, aks holda istalgan 14 xonali son
+    # (masalan telefon+narsa) bloklanib qolardi.
+    ("jshshir", re.compile(r"\b(?:jshshir|jshir|pinfl|шжшир|пинфл)\w*\s*[:\-]?\s*\d{14}\b", re.I)),
     # Foydalanuvchi nomi + parol kombinatsiyasi
     ("credentials", re.compile(r"\b(?:login|username|foydalanuvchi)\s*[:\-]\s*\S+", re.I)),
     # OTP / tasdiqlash kodi
@@ -38,6 +43,19 @@ _SENSITIVE_PATTERNS: list[tuple[str, re.Pattern]] = [
     # Kriptovalyuta wallet manzili (Bitcoin, Ethereum)
     ("crypto_wallet", re.compile(r"\b(?:0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{6,87})\b")),
 ]
+
+
+def _luhn_valid(digits: str) -> bool:
+    """Bank kartasi raqami checksumini (Luhn algoritmi) tekshiradi."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
 
 _SENSITIVE_REPLIES = {
     "uz": (
@@ -61,6 +79,15 @@ _SENSITIVE_REPLIES = {
 def _detect_sensitive(text: str) -> str | None:
     """Matnda maxfiy ma'lumot topilsa tur nomini qaytaradi, yo'q bo'lsa None."""
     for name, pattern in _SENSITIVE_PATTERNS:
+        if name == "bank_card":
+            # Faqat Luhn checksumidan o'tgan ketma-ketlikni karta deb hisoblaymiz —
+            # aks holda buyurtma raqami kabi uzun sonlar ham bloklanib qolardi.
+            if any(
+                _luhn_valid(re.sub(r"[ \-]", "", m.group(0)))
+                for m in pattern.finditer(text)
+            ):
+                return name
+            continue
         if pattern.search(text):
             return name
     return None
@@ -281,7 +308,7 @@ class AIService:
         await db.flush()
 
         # 11. Faktlarni ajratish + xotirani yangilash (background)
-        asyncio.create_task(self._extract_and_save_facts(db, user, text))
+        asyncio.create_task(self._extract_and_save_facts(user.id, text))
         await memory_manager.add_exchange(db, user, text, agent_response)
 
         return msg, agent_response
@@ -344,13 +371,19 @@ class AIService:
         except Exception:
             return ""
 
-    async def _extract_and_save_facts(
-        self, db: AsyncSession, user: TelegramUser, message: str
-    ) -> None:
+    async def _extract_and_save_facts(self, user_id: int, message: str) -> None:
+        # Alohida (yangi) sessiyada ishlaydi — chaqiruvchining so'rov-doirasidagi
+        # `db` sessiyasi fon vazifasi tugaguncha allaqachon yopilgan bo'lishi mumkin.
         try:
             facts = await analysis_agent.extract_facts(message)
-            if facts:
+            if not facts:
+                return
+            async with AsyncSessionLocal() as db:
+                user = await db.get(TelegramUser, user_id)
+                if user is None:
+                    return
                 await memory_manager.save_extracted_facts(db, user, facts)
+                await db.commit()
         except Exception as e:
             logger.warning(f"Fakt saqlashda xato: {e}")
 

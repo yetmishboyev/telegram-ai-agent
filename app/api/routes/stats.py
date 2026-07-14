@@ -27,11 +27,33 @@ async def get_overview(
     )
     spam_blocked = result.scalar() or 0
 
+    approved_result = await db.execute(
+        select(func.count(Message.id)).where(Message.was_approved == True)
+    )
+    total_approved = approved_result.scalar() or 0
+
+    edited_result = await db.execute(
+        select(func.count(Message.id)).where(
+            Message.was_approved == True,
+            Message.admin_override.isnot(None),
+        )
+    )
+    total_edited = edited_result.scalar() or 0
+
+    approval_rate_unedited = (
+        round((total_approved - total_edited) / total_approved * 100, 1)
+        if total_approved > 0
+        else None
+    )
+
     return {
         "total_users": total_users,
         "total_messages": total_messages,
         "sent_today": sent_today,
         "spam_blocked": spam_blocked,
+        "total_approved": total_approved,
+        "total_edited": total_edited,
+        "approval_rate_unedited": approval_rate_unedited,
     }
 
 

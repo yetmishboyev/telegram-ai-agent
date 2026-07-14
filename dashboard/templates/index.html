@@ -33,7 +33,7 @@
     </div>
 
     <!-- Stats cards -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-5 gap-4 mb-6">
         <div class="card p-5">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Foydalanuvchilar</span>
@@ -84,6 +84,19 @@
             </div>
             <div class="text-2xl font-bold text-red-400" x-text="stats.spam_blocked ?? '—'"></div>
             <div class="text-xs text-slate-600 mt-1">Filterlangan xabarlar</div>
+        </div>
+
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Tahrirsiz tasdiqlandi</span>
+                <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-amber-400" x-text="stats.approval_rate_unedited != null ? stats.approval_rate_unedited + '%' : '—'"></div>
+            <div class="text-xs text-slate-600 mt-1" x-text="stats.total_approved ? stats.total_approved + ' tasdiqlangan javobdan' : 'Uslub yaxshilanish ko\'rsatkichi'"></div>
         </div>
     </div>
 

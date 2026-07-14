@@ -5,10 +5,13 @@ from loguru import logger
 from app.ai.agents.base_agent import BaseAgent
 
 
-# Sun'iy intellektga oid RSS manbalar
+# Sun'iy intellektga oid RSS manbalar — turli xil, mustaqil manbalar (bir xil
+# Google News so'rovlarining takrorlanishidan qochish uchun; roadmap Faza 3, band 10)
 AI_NEWS_FEEDS = [
     "https://news.google.com/rss/search?q=artificial+intelligence+AI&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=AI+conference+grant+2025&hl=en-US&gl=US&ceid=US:en",
+    "https://venturebeat.com/category/ai/feed/",
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "https://huggingface.co/blog/feed.xml",
 ]
 
 # 09:00 dagi ta'limiy postlar uchun mavzular (rotatsiya)

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.database.session import get_db
 from app.database.models import AdminUser
 from app.utils.security import verify_password, create_access_token
-from app.ai.memory.short_term import short_term_memory
+from app.database.redis import get_redis
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,7 +25,7 @@ def _login_fail_key(ip: str) -> str:
 
 
 async def _enforce_rate_limit(ip: str) -> None:
-    r = await short_term_memory._get_redis()
+    r = await get_redis()
     attempts = await r.get(_login_fail_key(ip))
     if attempts and int(attempts) >= MAX_LOGIN_ATTEMPTS:
         ttl = await r.ttl(_login_fail_key(ip))
@@ -36,7 +36,7 @@ async def _enforce_rate_limit(ip: str) -> None:
 
 
 async def _register_failed_attempt(ip: str) -> None:
-    r = await short_term_memory._get_redis()
+    r = await get_redis()
     key = _login_fail_key(ip)
     attempts = await r.incr(key)
     if attempts == 1:
@@ -44,7 +44,7 @@ async def _register_failed_attempt(ip: str) -> None:
 
 
 async def _reset_attempts(ip: str) -> None:
-    r = await short_term_memory._get_redis()
+    r = await get_redis()
     await r.delete(_login_fail_key(ip))
 
 

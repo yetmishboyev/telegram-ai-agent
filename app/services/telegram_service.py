@@ -13,6 +13,7 @@ from telethon.tl.types import (
 
 from app.config import settings
 from app.database.session import AsyncSessionLocal
+from app.database.redis import get_redis
 from app.database.models import MessageType
 from app.services.ai_service import ai_service
 from app.ai.memory.short_term import short_term_memory
@@ -190,11 +191,11 @@ class TelegramService:
             logger.debug(f"Style learning xatosi: {e}")
 
     async def _mark_owner_active(self, chat_id: int) -> None:
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         await r.setex(f"owner_active:{chat_id}", OWNER_ACTIVE_TTL, "1")
 
     async def _is_owner_active(self, chat_id: int) -> bool:
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         return bool(await r.get(f"owner_active:{chat_id}"))
 
     async def _send_response(self, event, db_message, response: str, db) -> None:

@@ -192,10 +192,24 @@ def get_output_fallback(lang: str) -> str:
     return OUTPUT_FALLBACK.get(lang, OUTPUT_FALLBACK["uz"])
 
 
+_EN_MARKER_RE = re.compile(
+    r"\b(?:the|is|are|you|your|what|how|why|when|where"
+    r"|hello|hi|hey|thanks|thank|please|yes|okay|ok)\b",
+    re.I,
+)
+
+
 def get_lang(text: str) -> str:
-    """Matndan tilni taxminiy aniqlaydi."""
+    """Matndan tilni taxminiy aniqlaydi.
+
+    Lotin yozuvidagi matn odatiy inglizcha so'zlarni o'z ichiga olsagina "en"
+    deb belgilanadi; aks holda (loyihaning asosiy auditoriyasiga mos) "uz"
+    standart qiymat sifatida qaytariladi. Ilgari bu yerda `[o'ʻ]` belgilar
+    to'plami ishlatilgan edi — u xato ravishda oddiy "o" harfini ham tutib,
+    "o" harfi bo'lgan istalgan inglizcha matnni "uz" deb belgilagan.
+    """
     if re.search(r"[а-яёА-ЯЁ]", text):
         return "ru"
-    if re.search(r"[a-zA-Z]", text) and not re.search(r"[o'ʻ]", text):
+    if re.search(r"[a-zA-Z]", text) and _EN_MARKER_RE.search(text):
         return "en"
     return "uz"

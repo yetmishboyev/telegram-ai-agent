@@ -67,7 +67,7 @@ class ChannelPoster:
         """Postni egaga tasdiqlash uchun botda ko'rsatadi."""
         from telethon import Button
         from app.services.bot_service import bot_service
-        from app.ai.memory.short_term import short_term_memory
+        from app.database.redis import get_redis
 
         if not bot_service._client:
             logger.warning("Bot client tayyor emas — post egaga yuborib bo'lmadi")
@@ -76,7 +76,7 @@ class ChannelPoster:
         post_id = str(uuid.uuid4())[:8]
         text_with_footer = _md_to_html(text.rstrip()) + CHANNEL_FOOTER_HTML
 
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         await r.setex(
             f"pending_post:{post_id}",
             86400,
@@ -111,10 +111,10 @@ class ChannelPoster:
         self, post_id: str, feedback: str
     ) -> None:
         """Feedbackka asosan postni qayta tayyorlab, yana tasdiqlashga yuboradi."""
-        from app.ai.memory.short_term import short_term_memory
+        from app.database.redis import get_redis
         from app.services.news_fetcher import news_fetcher
 
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         raw = await r.get(f"pending_post:{post_id}")
         if not raw:
             logger.warning(f"Tahrirlash uchun post topilmadi: {post_id}")
@@ -132,10 +132,10 @@ class ChannelPoster:
 
     async def regenerate_new_and_send_for_approval(self, post_id: str) -> None:
         """Avvalgi postni o'chirib, tamomila boshqa mavzuda yangi post tayyorlab yuboradi."""
-        from app.ai.memory.short_term import short_term_memory
+        from app.database.redis import get_redis
         from app.services.news_fetcher import news_fetcher
 
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         raw = await r.get(f"pending_post:{post_id}")
         if not raw:
             logger.warning(f"Qayta yaratish uchun post topilmadi: {post_id}")

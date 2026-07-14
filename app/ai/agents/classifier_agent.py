@@ -4,6 +4,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.agents.json_parse import parse_json_response
 from app.ai.prompts.system_prompt import CLASSIFIER_PROMPT
 
 
@@ -49,12 +50,7 @@ class ClassifierAgent(BaseAgent):
                 temperature=0.1,
                 max_tokens=256,
             )
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            data = json.loads(raw)
+            data = parse_json_response(raw)
             result = ClassificationResult(**data)
             logger.debug(
                 f"Klassifikatsiya: {result.category} "

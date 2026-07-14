@@ -75,14 +75,14 @@ class BotService:
     # ─── state ────────────────────────────────────────────────────────────────
 
     async def _get_state(self) -> dict | None:
-        from app.ai.memory.short_term import short_term_memory
-        r = await short_term_memory._get_redis()
+        from app.database.redis import get_redis
+        r = await get_redis()
         raw = await r.get(f"bot_state:{self._owner_id}")
         return json.loads(raw) if raw else None
 
     async def _set_state(self, state: dict | None) -> None:
-        from app.ai.memory.short_term import short_term_memory
-        r = await short_term_memory._get_redis()
+        from app.database.redis import get_redis
+        r = await get_redis()
         key = f"bot_state:{self._owner_id}"
         if state is None:
             await r.delete(key)
@@ -289,10 +289,10 @@ class BotService:
     async def _approve_post(self, event, post_id: str) -> None:
         """Tasdiqlangan postni kanalga yuboradi va DB ga saqlaydi."""
         import json
-        from app.ai.memory.short_term import short_term_memory
+        from app.database.redis import get_redis
         from app.services.channel_poster import channel_poster
 
-        r = await short_term_memory._get_redis()
+        r = await get_redis()
         raw = await r.get(f"pending_post:{post_id}")
         if not raw:
             await event.edit("❌ Post topilmadi yoki muddati o'tgan.")
@@ -314,8 +314,8 @@ class BotService:
 
     async def _reject_post(self, event, post_id: str) -> None:
         """Postni rad etadi va Redis dan o'chiradi."""
-        from app.ai.memory.short_term import short_term_memory
-        r = await short_term_memory._get_redis()
+        from app.database.redis import get_redis
+        r = await get_redis()
         raw = await r.get(f"pending_post:{post_id}")
         if not raw:
             await event.edit("❌ Post topilmadi yoki allaqachon o'chirilgan.")
@@ -388,17 +388,28 @@ class BotService:
     # ─── time parsing ─────────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_time(text: str) -> tuple[str, str | None] | None:
+    def _is_valid_hm(value: str) -> bool:
+        h, _, m = value.partition(":")
+        return h.isdigit() and m.isdigit() and 0 <= int(h) < 24 and 0 <= int(m) < 60
+
+    @classmethod
+    def _parse_time(cls, text: str) -> tuple[str, str | None] | None:
         text = text.strip()
         m = re.match(r"(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})", text)
         if m:
-            return m.group(1), m.group(2)
+            start, end = m.group(1), m.group(2)
+            if cls._is_valid_hm(start) and cls._is_valid_hm(end):
+                return start, end
+            return None
         m = re.match(r"^(\d{1,2}:\d{2})$", text)
         if m:
-            return m.group(1), None
+            return (m.group(1), None) if cls._is_valid_hm(m.group(1)) else None
         m = re.match(r"^(\d{1,2})[.,\s](\d{2})$", text)
         if m:
-            return f"{m.group(1)}:{m.group(2)}", None
+            candidate = f"{m.group(1)}:{m.group(2)}"
+            if cls._is_valid_hm(candidate):
+                return candidate, None
+            return None
         return None
 
     # ─── lifecycle ────────────────────────────────────────────────────────────
