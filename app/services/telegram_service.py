@@ -107,10 +107,20 @@ class TelegramService:
 
         for event, _ in batch:
             msg_type = self._detect_message_type(event.message)
-            text = event.message.text or ""
-            if not text and event.message.media:
-                label = self._media_label(msg_type)
-                text = label
+            text = event.message.text or ""  # media uchun bu izoh (caption)
+
+            if msg_type == MessageType.IMAGE:
+                # Rasmni matnli tavsifga aylantiramiz — keyin odatiy matnli quvur
+                # (klassifikatsiya, FAQ, eskalatsiya, javob) uni qayta ishlaydi.
+                description = await self._describe_image(event.message)
+                if description:
+                    img_part = f"[Rasm tavsifi: {description}]"
+                    text = f"{text}\n{img_part}" if text else img_part
+                elif not text:
+                    text = self._media_label(msg_type)
+            elif not text and event.message.media:
+                text = self._media_label(msg_type)
+
             if text:
                 parts.append(text)
             last_event = event
@@ -174,6 +184,29 @@ class TelegramService:
         return labels.get(msg_type, "📁 Fayl yuborildi")
 
     # ─── Yordamchi metodlar ───────────────────────────────────────────────────
+
+    async def _describe_image(self, message) -> str | None:
+        """Rasmni yuklab, vision agenti orqali matnli tavsifga aylantiradi."""
+        try:
+            image_bytes = await message.download_media(file=bytes)
+            if not image_bytes:
+                return None
+            from app.ai.agents.vision_agent import vision_agent
+            return await vision_agent.describe(
+                image_bytes, media_type=self._image_mime(message)
+            )
+        except Exception as e:
+            logger.error(f"Rasmni tavsiflashda xato: {e}")
+            return None
+
+    @staticmethod
+    def _image_mime(message) -> str:
+        doc = getattr(message, "document", None)
+        if doc is not None and getattr(doc, "mime_type", None) in (
+            "image/jpeg", "image/png", "image/gif", "image/webp"
+        ):
+            return doc.mime_type
+        return "image/jpeg"
 
     async def _learn_style(self, text: str) -> None:
         try:
