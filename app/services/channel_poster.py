@@ -287,5 +287,99 @@ class ChannelPoster:
         except Exception as e:
             logger.error(f"On-demand post xatosi: {e}")
 
+    # ─── interaktiv quiz / so'rovnoma ───────────────────────────────────────────
+
+    async def _send_poll_to_channel(self, quiz: dict) -> int | None:
+        """Kanalga native poll/quiz yuboradi (Telegram Bot API sendPoll)."""
+        import httpx
+        is_quiz = quiz.get("kind") == "quiz"
+        payload: dict = {
+            "chat_id": CHANNEL,
+            "question": quiz["question"],
+            "options": [{"text": o[:100]} for o in quiz["options"]],
+            "is_anonymous": True,
+            "type": "quiz" if is_quiz else "regular",
+        }
+        if is_quiz:
+            payload["correct_option_id"] = quiz.get("correct_index", 0)
+            if quiz.get("explanation"):
+                payload["explanation"] = quiz["explanation"]
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.post(
+                    f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendPoll",
+                    json=payload,
+                )
+                data = resp.json()
+            if not data.get("ok"):
+                logger.error(f"sendPoll xatosi: {data}")
+                return None
+            logger.info(f"Kanal poll yuborildi: {quiz['question'][:50]}...")
+            return data["result"]["message_id"]
+        except Exception as e:
+            logger.error(f"Poll yuborishda xato: {e}")
+            return None
+
+    async def create_quiz_on_demand(self, kind: str, topic: str) -> None:
+        """Bot menyusidan chaqiriladi: quiz/so'rovnoma generatsiya + tasdiqlash."""
+        try:
+            from app.services.news_fetcher import news_fetcher
+            quiz = await news_fetcher.generate_quiz(topic, kind)
+            if not quiz:
+                await self._notify_owner_text("❌ Quiz tayyorlab bo'lmadi. Mavzuni aniqroq yozib qayta urinib ko'ring.")
+                return
+            await self._send_poll_for_approval(quiz, topic)
+        except Exception as e:
+            logger.error(f"Quiz on-demand xatosi: {e}")
+
+    async def _send_poll_for_approval(self, quiz: dict, topic: str) -> None:
+        from telethon import Button
+        from app.services.bot_service import bot_service
+        from app.database.redis import get_redis
+
+        if not bot_service._client:
+            return
+        poll_id = str(uuid.uuid4())[:8]
+        quiz["topic"] = topic
+        r = await get_redis()
+        await r.setex(f"pending_poll:{poll_id}", 86400, json.dumps(quiz))
+
+        head = "❓ Quiz" if quiz["kind"] == "quiz" else "📊 So'rovnoma"
+        lines = [f"{head} — tasdiqlash kerak\n", f"❔ {quiz['question']}\n"]
+        for i, o in enumerate(quiz["options"]):
+            mark = " ✅" if quiz["kind"] == "quiz" and i == quiz.get("correct_index") else ""
+            lines.append(f"{i + 1}. {o}{mark}")
+        if quiz.get("explanation"):
+            lines.append(f"\n💡 {quiz['explanation']}")
+
+        await bot_service._client.send_message(
+            settings.owner_telegram_id,
+            "\n".join(lines),
+            buttons=[
+                [Button.inline("✅ Nashr", f"approve_poll:{poll_id}".encode()),
+                 Button.inline("🔄 Boshqa", f"regen_poll:{poll_id}".encode())],
+                [Button.inline("❌ Rad etish", f"reject_poll:{poll_id}".encode())],
+            ],
+        )
+        logger.info(f"Poll tasdiqlash uchun yuborildi (id={poll_id})")
+
+    async def regenerate_poll(self, poll_id: str) -> None:
+        from app.database.redis import get_redis
+        r = await get_redis()
+        raw = await r.get(f"pending_poll:{poll_id}")
+        if not raw:
+            return
+        old = json.loads(raw)
+        await r.delete(f"pending_poll:{poll_id}")
+        await self.create_quiz_on_demand(old["kind"], old.get("topic", ""))
+
+    async def _notify_owner_text(self, text: str) -> None:
+        try:
+            from app.services.bot_service import bot_service
+            if bot_service._client:
+                await bot_service._client.send_message(settings.owner_telegram_id, text)
+        except Exception as e:
+            logger.error(f"Egaga xabar yuborishda xato: {e}")
+
 
 channel_poster = ChannelPoster()

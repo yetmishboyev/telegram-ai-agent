@@ -33,6 +33,8 @@ NEWPOST_TYPE_BUTTONS = [
     [Button.inline("🎓 Ta'limiy", b"newpost:type:educational"),
      Button.inline("🌐 Yangilik", b"newpost:type:news")],
     [Button.inline("✍️ Erkin mavzu", b"newpost:type:free")],
+    [Button.inline("❓ Quiz", b"newpost:type:quiz"),
+     Button.inline("📊 So'rovnoma", b"newpost:type:poll")],
     [Button.inline("🔙 Menyu", b"menu")],
 ]
 
@@ -138,6 +140,18 @@ class BotService:
                 f"✍️ Mavzu: {text}\n\n🎨 Uslubni tanlang:",
                 buttons=self._style_buttons("newpost:genfree"),
             )
+            return
+
+        if step == "quiz_topic":
+            kind = state.get("kind", "quiz")
+            await self._set_state(None)
+            nom = "Quiz" if kind == "quiz" else "So'rovnoma"
+            await self._client.send_message(
+                event.chat_id, f"⏳ {nom} tayyorlanmoqda — tasdiqlash uchun keladi..."
+            )
+            import asyncio as _aio
+            from app.services.channel_poster import channel_poster
+            _aio.create_task(channel_poster.create_quiz_on_demand(kind, text))
             return
 
         if step == "faq_question":
@@ -282,10 +296,35 @@ class BotService:
                     "\"AI bilan biznesni avtomatlashtirish\"):",
                     buttons=CANCEL_ROW,
                 )
+            elif ptype in ("quiz", "poll"):
+                await self._set_state({"step": "quiz_topic", "kind": ptype})
+                nom = "❓ Quiz savoli" if ptype == "quiz" else "📊 So'rovnoma"
+                await event.edit(
+                    f"{nom} qaysi mavzuda bo'lsin? Mavzuni yozing "
+                    "(masalan: \"RAG\", \"Prompt engineering\", \"AI xavfsizligi\"):",
+                    buttons=CANCEL_ROW,
+                )
             else:
                 await event.edit(
                     "🎨 Uslubni tanlang:", buttons=self._style_buttons(f"newpost:gen:{ptype}")
                 )
+
+        elif data.startswith("approve_poll:"):
+            await self._approve_poll(event, data.split(":", 1)[1])
+
+        elif data.startswith("regen_poll:"):
+            poll_id = data.split(":", 1)[1]
+            await event.edit("🔄 Yangi variant tayyorlanmoqda...")
+            import asyncio as _aio
+            from app.services.channel_poster import channel_poster
+            _aio.create_task(channel_poster.regenerate_poll(poll_id))
+
+        elif data.startswith("reject_poll:"):
+            poll_id = data.split(":", 1)[1]
+            from app.database.redis import get_redis
+            r = await get_redis()
+            await r.delete(f"pending_poll:{poll_id}")
+            await event.edit("🗑 Rad etildi.")
 
         elif data.startswith("newpost:gen:"):
             _, _, ptype, style = data.split(":")
@@ -507,6 +546,32 @@ class BotService:
             rows.append([Button.inline(meta["label"], f"{action_prefix}:{key}".encode())])
         rows.append([Button.inline("❌ Bekor qilish", b"cancel")])
         return rows
+
+    async def _approve_poll(self, event, poll_id: str) -> None:
+        """Tasdiqlangan quiz/so'rovnomani kanalga native poll sifatida yuboradi."""
+        import json as _json
+        from app.database.redis import get_redis
+        from app.services.channel_poster import channel_poster
+
+        r = await get_redis()
+        raw = await r.get(f"pending_poll:{poll_id}")
+        if not raw:
+            await event.edit("❌ Topilmadi yoki muddati o'tgan.")
+            return
+        quiz = _json.loads(raw)
+        await r.delete(f"pending_poll:{poll_id}")
+
+        message_id = await channel_poster._send_poll_to_channel(quiz)
+        if message_id:
+            await channel_poster._save_channel_post(
+                telegram_message_id=message_id,
+                post_type=quiz.get("kind", "quiz"),
+                topic=quiz.get("topic", ""),
+                text=quiz.get("question", ""),
+            )
+            await event.edit("✅ Kanalga yuborildi!")
+        else:
+            await event.edit("❌ Kanalga yuborishda xato yuz berdi.")
 
     # ─── bilim bazasi (FAQ) ─────────────────────────────────────────────────────
 
