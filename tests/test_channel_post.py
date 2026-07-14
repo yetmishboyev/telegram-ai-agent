@@ -6,13 +6,32 @@ from app.services.news_fetcher import (
     news_fetcher, style_instruction, POST_STYLES, DEFAULT_STYLE,
 )
 from app.services.channel_poster import channel_poster
+from app.utils.uz_text import to_latin_uz
 
 
 def test_style_instruction_known_and_default():
     assert "CHAPANI" in style_instruction("chapani")
     assert "QISQA" in style_instruction("qisqa")
-    # noma'lum uslub → default
-    assert style_instruction("yoq-bunday") == POST_STYLES[DEFAULT_STYLE]["instruction"]
+    # noma'lum uslub → default (lotin qoidasi qo'shilgan holda)
+    assert style_instruction("yoq-bunday").startswith(POST_STYLES[DEFAULT_STYLE]["instruction"])
+    # har bir uslubga lotin-only qoidasi qo'shiladi
+    assert "LOTIN" in style_instruction("chapani")
+
+
+def test_to_latin_uz_fixes_mixed_script():
+    assert to_latin_uz("qidirади") == "qidiradi"      # ради krill
+    assert to_latin_uz("Шунday") == "Shunday"
+    assert to_latin_uz("ў ғ қ ҳ") == "o' g' q h"
+    assert to_latin_uz("oddiy lotin matn") == "oddiy lotin matn"  # o'zgarmaydi
+
+
+@pytest.mark.asyncio
+async def test_news_fetcher_transliterates_llm_output():
+    with patch("app.ai.agents.base_agent.BaseAgent._call_llm",
+               AsyncMock(return_value="AI Agent o'zi qidиради")):
+        r = await news_fetcher._call_llm(messages=[{"role": "user", "content": "x"}])
+    assert r == "AI Agent o'zi qidiradi"
+    assert not any("а" <= ch <= "я" for ch in r)  # krill qolmadi
 
 
 @pytest.mark.asyncio
