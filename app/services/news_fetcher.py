@@ -226,6 +226,53 @@ Talablar:
             max_tokens=800,
         )
 
+    async def generate_quiz(self, topic: str, kind: str = "quiz") -> dict | None:
+        """Interaktiv quiz (to'g'ri javobli) yoki so'rovnoma (fikr) generatsiya qiladi.
+
+        Returns: {kind, question, options[], correct_index?, explanation?} yoki None.
+        """
+        from app.ai.agents.json_parse import parse_json_response
+
+        if kind == "quiz":
+            prompt = f"""Sen sun'iy intellekt bo'yicha Telegram kanal muallifisan. "{topic}" mavzusida obunachilar uchun QIZIQARLI test savoli (quiz) tuz.
+
+Faqat JSON qaytar:
+{{"question": "savol matni", "options": ["variant A", "variant B", "variant C", "variant D"], "correct_index": 0, "explanation": "to'g'ri javob nega to'g'ri — 1-2 gap"}}
+
+Qoidalar: 3-4 variant bo'lsin, faqat BITTA to'g'ri; savol qiziqarli va aniq; hammasi o'zbek LOTIN alifbosida; savol 250 belgidan, har variant 100 belgidan oshmasin. Faqat JSON."""
+        else:  # so'rovnoma (opinion poll — to'g'ri javob yo'q)
+            prompt = f"""Sen sun'iy intellekt bo'yicha Telegram kanal muallifisan. "{topic}" mavzusida obunachilar fikrini so'raydigan qiziqarli SO'ROVNOMA (poll) tuz.
+
+Faqat JSON qaytar:
+{{"question": "so'rov savoli", "options": ["variant A", "variant B", "variant C", "variant D"]}}
+
+Qoidalar: 2-4 variant; fikr/tanlov so'rovi (to'g'ri javob yo'q); hammasi o'zbek LOTIN alifbosida; savol 250 belgidan, har variant 100 belgidan oshmasin. Faqat JSON."""
+
+        try:
+            raw = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6, max_tokens=500,
+            )
+            data = parse_json_response(raw)
+        except Exception as e:
+            logger.error(f"Quiz generatsiyada xato: {e}")
+            return None
+
+        if not isinstance(data, dict):
+            return None
+        question = str(data.get("question", "")).strip()[:250]
+        options = [str(o).strip()[:100] for o in (data.get("options") or []) if str(o).strip()]
+        options = options[:4]
+        if not question or len(options) < 2:
+            return None
+
+        result: dict = {"kind": kind, "question": question, "options": options}
+        if kind == "quiz":
+            ci = data.get("correct_index", 0)
+            result["correct_index"] = ci if isinstance(ci, int) and 0 <= ci < len(options) else 0
+            result["explanation"] = str(data.get("explanation", "")).strip()[:200]
+        return result
+
     async def generate_free_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Ega bergan erkin mavzu/topshiriq bo'yicha post yozadi."""
         prompt = f"""
