@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.utils.uz_text import to_latin_uz
 
 
 # Sun'iy intellektga oid RSS manbalar — turli xil, mustaqil manbalar (bir xil
@@ -74,14 +75,26 @@ POST_STYLES: dict[str, dict] = {
 DEFAULT_STYLE = "chapani"
 
 
+_LATIN_RULE = (
+    " MUHIM: butun matnni FAQAT o'zbek LOTIN alifbosida yoz — biror so'zga ham "
+    "krill harflarini (а, б, в, г, д...) aralashtirma."
+)
+
+
 def style_instruction(style: str) -> str:
-    return POST_STYLES.get(style, POST_STYLES[DEFAULT_STYLE])["instruction"]
+    return POST_STYLES.get(style, POST_STYLES[DEFAULT_STYLE])["instruction"] + _LATIN_RULE
 
 
 class NewsFetcher(BaseAgent):
 
     async def run(self, *args, **kwargs):
         pass
+
+    async def _call_llm(self, *args, **kwargs) -> str:
+        """Post generatsiyasi natijasini lotinlashtiradi — LLM ba'zan lotincha
+        o'zbek matniga krill harflarni aralashtirib yuboradi (masalan "qidirади")."""
+        result = await super()._call_llm(*args, **kwargs)
+        return to_latin_uz(result)
 
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
         """RSS feeddan yangiliklar oladi."""
