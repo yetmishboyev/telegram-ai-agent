@@ -181,7 +181,7 @@ async def health():
         checks["chromadb"] = "error"
 
     checks["telegram_userbot"] = (
-        "connected" if telegram_service._client.is_connected() else "disconnected"
+        "connected" if telegram_service.is_ready() else "disconnected"
     )
     checks["telegram_bot"] = (
         "connected"

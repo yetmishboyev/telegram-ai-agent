@@ -10,7 +10,7 @@ from app.ai.agents.classifier_agent import classifier_agent, MessageCategory
 from app.ai.agents.response_agent import response_agent
 from app.ai.agents.style_learner import style_learner
 from app.ai.memory.manager import memory_manager
-from app.ai.prompts.system_prompt import IMPORTANT_RESPONSES
+from app.services.escalation_service import escalation_service
 from app.database.models import TelegramUser, Message, MessageRole, MessageType
 from app.database.models import SentimentType, ThreatLevel
 from app.database.session import AsyncSessionLocal
@@ -243,7 +243,7 @@ class AIService:
         # 8. IMPORTANT — jadval bilan dinamik javob + egaga bildirishnoma
         if classification.category == MessageCategory.IMPORTANT or \
                 classification.should_notify_owner:
-            response = await self._build_important(lang)
+            response = await escalation_service.build_reply(user, text, lang)
             logger.info(
                 f"IMPORTANT: user={telegram_id}, sabab={classification.reason}"
             )
@@ -300,7 +300,7 @@ class AIService:
                     f"Ishonch past ({analysis.confidence:.2f}) — AI javob bera olmadi"
                 )
             )
-            fallback = IMPORTANT_RESPONSES.get(lang, IMPORTANT_RESPONSES["uz"])
+            fallback = await escalation_service.build_reply(user, text, lang)
             msg.agent_response = fallback
             await db.flush()
             await memory_manager.add_exchange(db, user, text, fallback)
@@ -331,27 +331,6 @@ class AIService:
         else:
             intro = "Men Shaxzodbek Yetmishboyevning AI agentiman."
             ending = "Sizga qanday yordam bera olaman?"
-
-        if status:
-            return f"{intro} {status.capitalize()}. {ending}"
-        return f"{intro} {ending}"
-
-    async def _build_important(self, lang: str) -> str:
-        try:
-            from app.repositories.task_repo import get_current_status
-            status = await get_current_status(lang)
-        except Exception:
-            status = None
-
-        if lang == "ru":
-            intro = "Я AI-агент Шахзодбека Йетмишбоева."
-            ending = "Пожалуйста, оставьте ваш вопрос — Шахзодбек ответит как можно скорее."
-        elif lang == "en":
-            intro = "I'm Shaxzodbek Yetmishboyev's AI agent."
-            ending = "Please leave your message — Shaxzodbek will respond as soon as possible."
-        else:
-            intro = "Men Shaxzodbek Yetmishboyevning AI agentiman."
-            ending = "Iltimos, savolingizni yozib qoldiring — Shaxzodbek imkon topgach javob beradi."
 
         if status:
             return f"{intro} {status.capitalize()}. {ending}"

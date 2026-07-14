@@ -235,6 +235,16 @@ class TelegramService:
             return MessageType.STICKER
         return MessageType.OTHER
 
+    def is_ready(self) -> bool:
+        """UserBot haqiqatan xabarga javob bera oladigan holatdami.
+
+        Faqat TCP `is_connected()` yetarli emas — sessiya avtorizatsiyadan
+        o'tmagan bo'lsa ham ulanish ochiq bo'lishi mumkin. `_me` esa faqat
+        muvaffaqiyatli avtorizatsiyadan keyin o'rnatiladi, shuning uchun
+        ikkovini birga tekshiramiz.
+        """
+        return self._me is not None and self._client.is_connected()
+
     async def send_message(self, chat_id: int, text: str) -> None:
         await self._client.send_message(chat_id, text)
 
@@ -255,6 +265,7 @@ class TelegramService:
                     # qayta chaqirsak duplikat handlerlar qo'shiladi.
                 else:
                     logger.error("Telegram sessiyasi muddati tugagan")
+                    self._me = None  # is_ready() endi to'g'ri "disconnected" qaytaradi
                     try:
                         from app.services.notification_service import notification_service
                         await notification_service.notify_error(
