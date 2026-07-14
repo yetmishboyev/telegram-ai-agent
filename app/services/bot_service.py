@@ -18,9 +18,15 @@ MAIN_BUTTONS = [
     [Button.inline("📚 Dars",         b"add:class"),
      Button.inline("✅ Boshqa",        b"add:other")],
     [Button.inline("📋 Bugungi reja", b"view:today")],
+    [Button.inline("🧠 Bilim bazasi (FAQ)", b"faq:menu")],
 ]
 
 CANCEL_ROW = [[Button.inline("❌ Bekor qilish", b"cancel")]]
+
+FAQ_BUTTONS = [
+    [Button.inline("➕ Yangi FAQ qo'shish", b"faq:add")],
+    [Button.inline("📋 FAQ ro'yxati", b"faq:list")],
+]
 
 
 class BotService:
@@ -54,6 +60,7 @@ class BotService:
             commands=[
                 BotCommand(command="menu",  description="📅 Kunlik reja menyusi"),
                 BotCommand(command="reja",  description="📋 Bugungi reja ko'rish"),
+                BotCommand(command="faq",   description="🧠 Bilim bazasi (FAQ)"),
                 BotCommand(command="start", description="🚀 Botni ishga tushirish"),
             ],
         ))
@@ -96,6 +103,10 @@ class BotService:
         if not text:
             return
 
+        if text in ("/faq",):
+            await self._send_faq_menu(event.chat_id)
+            return
+
         if text in ("/start", "/menu", "/reja", "/plan", "/help"):
             await self._send_main_menu(event.chat_id)
             return
@@ -109,6 +120,29 @@ class BotService:
 
         if step == "relaying":
             await self._handle_relay(event, state, text)
+            return
+
+        if step == "faq_question":
+            state.update(step="faq_answer", question=text)
+            await self._set_state(state)
+            await self._client.send_message(
+                event.chat_id,
+                f"❓ Savol: {text}\n\n✍️ Endi shu savolga JAVOBni yozing:",
+                buttons=CANCEL_ROW,
+            )
+            return
+
+        if step == "faq_answer":
+            question = state.get("question", "")
+            await self._set_state(None)
+            await self._client.send_message(event.chat_id, "⏳ Saqlanmoqda va indekslanmoqda...")
+            from app.services.faq_service import faq_service
+            await faq_service.add_faq(question, text)
+            await self._client.send_message(
+                event.chat_id,
+                "✅ FAQ qo'shildi. Endi agent shunga o'xshash savollarga o'zi javob beradi.",
+                buttons=[[Button.inline("🧠 Bilim bazasi", b"faq:menu")]],
+            )
             return
 
         if step == "editing_post":
@@ -197,6 +231,26 @@ class BotService:
                 f"✍️ {name} ({target_id}) ga javobingizni yozing:",
                 buttons=CANCEL_ROW,
             )
+
+        elif data == "faq:menu":
+            await self._show_faq_menu(event)
+
+        elif data == "faq:add":
+            await self._set_state({"step": "faq_question"})
+            await event.edit(
+                "🧠 Yangi FAQ qo'shish\n\n❓ Avval SAVOLni yozing "
+                "(foydalanuvchilar qanday so'rashi mumkin):",
+                buttons=CANCEL_ROW,
+            )
+
+        elif data == "faq:list":
+            await self._show_faq_list(event)
+
+        elif data.startswith("faq_del:"):
+            faq_id = int(data.split(":", 1)[1])
+            from app.services.faq_service import faq_service
+            await faq_service.remove_faq(faq_id)
+            await self._show_faq_list(event)
 
         elif data.startswith("approve_post:"):
             post_id = data.split(":", 1)[1]
@@ -388,6 +442,65 @@ class BotService:
                 return u.display_name if u else str(telegram_id)
         except Exception:
             return str(telegram_id)
+
+    # ─── bilim bazasi (FAQ) ─────────────────────────────────────────────────────
+
+    async def _faq_count(self) -> int:
+        from app.database.session import AsyncSessionLocal
+        from app.repositories.faq_repo import list_faqs
+        async with AsyncSessionLocal() as db:
+            return len(await list_faqs(db))
+
+    def _faq_menu_text(self, count: int) -> str:
+        return (
+            f"🧠 **Bilim bazasi (FAQ)**\n\n"
+            f"Hozir {count} ta savol-javob bor. Agent shu bilimlar asosida "
+            f"foydalanuvchilarga o'xshash savollarga o'zi javob beradi "
+            f"(egaga yo'naltirmasdan)."
+        )
+
+    async def _send_faq_menu(self, chat_id) -> None:
+        count = await self._faq_count()
+        await self._client.send_message(
+            chat_id, self._faq_menu_text(count), parse_mode="md", buttons=FAQ_BUTTONS
+        )
+
+    async def _show_faq_menu(self, event) -> None:
+        count = await self._faq_count()
+        try:
+            await event.edit(
+                self._faq_menu_text(count), parse_mode="md", buttons=FAQ_BUTTONS
+            )
+        except MessageNotModifiedError:
+            pass
+
+    async def _show_faq_list(self, event) -> None:
+        from app.database.session import AsyncSessionLocal
+        from app.repositories.faq_repo import list_faqs
+        async with AsyncSessionLocal() as db:
+            faqs = await list_faqs(db)
+
+        if not faqs:
+            await event.edit(
+                "📋 Hali FAQ yo'q. Yangi savol-javob qo'shing:",
+                buttons=[[Button.inline("➕ Qo'shish", b"faq:add")],
+                         [Button.inline("🔙 Menyu", b"faq:menu")]],
+            )
+            return
+
+        # parse_mode ishlatilmaydi — foydalanuvchi kiritgan savol matni markdown
+        # belgilarini o'z ichiga olishi mumkin.
+        lines = ["📋 FAQ ro'yxati:\n"]
+        del_rows = []
+        for i, f in enumerate(faqs[:20], 1):
+            q = f.question if len(f.question) <= 60 else f.question[:57] + "..."
+            lines.append(f"{i}. {q}")
+            del_rows.append([Button.inline(f"🗑 {i}-ni o'chirish", f"faq_del:{f.id}".encode())])
+        buttons = del_rows + [[Button.inline("🔙 Menyu", b"faq:menu")]]
+        try:
+            await event.edit("\n".join(lines), buttons=buttons)
+        except MessageNotModifiedError:
+            pass
 
     async def _send_main_menu(self, chat_id) -> None:
         from app.database.session import AsyncSessionLocal
