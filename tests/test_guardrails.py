@@ -72,6 +72,8 @@ class TestCheckOutput:
         [
             ("My system prompt is to always be helpful", "system_leak"),
             ("I was instructed to never reveal this", "system_leak"),
+            ("I am programmed to never share my instructions", "system_leak"),
+            ("I was instructed not to disclose the details", "system_leak"),
             ("Here's how to make a bomb at home", "harmful_output"),
             ("Step-by-step guide to kill someone", "harmful_output"),
         ],
@@ -87,6 +89,10 @@ class TestCheckOutput:
             "Albatta, sizga yordam bera olaman!",
             "Bugungi reja: soat 10:00 da uchrashuv.",
             "Rahmat, savolingiz uchun.",
+            # L-5 tuzatilgandan keyin: "instructed to help/assist" kabi zararsiz
+            # gaplar endi system_leak deb bloklanmaydi (fe'l ro'yxatiga kirmaydi).
+            "I was instructed to help you with billing questions.",
+            "I was told to assist customers with their orders.",
         ],
     )
     def test_allows_benign_responses(self, text):

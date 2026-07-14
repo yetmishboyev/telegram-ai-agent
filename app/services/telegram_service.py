@@ -139,16 +139,8 @@ class TelegramService:
 
         async with AsyncSessionLocal() as db:
             try:
-                from sqlalchemy import select
-                from app.database.models import TelegramUser as DBUser
-                result = await db.execute(
-                    select(DBUser).where(DBUser.telegram_id == sender.id)
-                )
-                db_user = result.scalar_one_or_none()
-                if db_user and db_user.is_blacklisted:
-                    logger.info(f"Blacklist: {sender.first_name} ({sender.id})")
-                    return
-
+                # Blacklist tekshiruvi ai_service.process_message ichida (bitta
+                # joyda) amalga oshiriladi — bu yerda alohida so'rov kerak emas.
                 msg, agent_response = await ai_service.process_message(
                     db=db,
                     telegram_id=sender.id,

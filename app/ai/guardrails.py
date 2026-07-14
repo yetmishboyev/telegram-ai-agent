@@ -159,7 +159,11 @@ _OUTPUT_RULES: list[tuple[str, re.Pattern]] = [
     # System prompt sizib chiqishi
     ("system_leak", re.compile(
         r"(?:my\s+(?:system\s+)?(?:prompt|instructions?)\s+(?:is|are|say|state)"
-        r"|(?:I\s+(?:am|was)\s+(?:told|instructed|programmed)\s+to)"
+        # "I was instructed to help/answer/assist..." kabi zararsiz gaplarni
+        # bloklamaslik uchun faqat sirni oshkor qilish bilan bog'liq fe'llar
+        # (reveal/share/disclose va h.k.) bilan birga kelgandagina mos keladi.
+        r"|(?:I\s+(?:am|was)\s+(?:told|instructed|programmed)\s+(?:not\s+)?to"
+        r"\s+(?:\w+\s+){0,2}(?:reveal|share|disclose|discuss|repeat|hide|conceal)\b)"
         r"|(?:system\s+prompt\s*[:\-]))",
         re.I,
     )),

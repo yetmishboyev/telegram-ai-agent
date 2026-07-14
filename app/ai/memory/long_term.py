@@ -9,6 +9,16 @@ from app.ai.rag.indexer import rag_indexer
 
 _MAX_FACT_VALUE_LEN = 200
 
+# Fakt kaliti (o'zbekcha/inglizcha) → TelegramUser'ning to'g'ridan-to'g'ri
+# yoziladigan skalyar maydoni. Yangi maydon qo'shish uchun shu lug'atga bitta
+# qator qo'shish kifoya — if/elif zanjirini kengaytirish shart emas.
+_PROFILE_FIELD_MAP: dict[str, str] = {
+    "kasbi": "profession",
+    "profession": "profession",
+    "kompaniya": "company",
+    "company": "company",
+}
+
 
 def _sanitize_fact_value(value: str) -> str:
     """Ajratilgan fakt qiymatini saqlashdan oldin tozalaydi.
@@ -113,10 +123,9 @@ class LongTermMemory:
             )
 
             # Maxsus kategoriyalarni to'g'ridan-to'g'ri profilga ham yozamiz
-            if key == "kasbi" or key == "profession":
-                user.profession = value
-            elif key == "kompaniya" or key == "company":
-                user.company = value
+            field_name = _PROFILE_FIELD_MAP.get(key.lower())
+            if field_name:
+                setattr(user, field_name, value)
 
         logger.info(f"Profil yangilandi: user={user.id}, {len(extracted_facts)} ta fakt")
 

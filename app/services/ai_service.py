@@ -111,9 +111,9 @@ class AIService:
         user, is_new = await user_repo.get_or_create(
             db, telegram_id, username, first_name, last_name
         )
-        await user_repo.update_last_seen(db, user)
 
-        # 2. Blacklist
+        # 2. Blacklist — bloklangan foydalanuvchi statistikaga (total_messages)
+        # qo'shilmasligi uchun update_last_seen shu tekshiruvdan KEYIN chaqiriladi.
         if user.is_blacklisted:
             logger.info(f"Blacklisted: {telegram_id}")
             msg = await message_repo.create(
@@ -122,6 +122,8 @@ class AIService:
                 telegram_message_id=telegram_message_id,
             )
             return msg, None
+
+        await user_repo.update_last_seen(db, user)
 
         # 2b. Maxfiy ma'lumot filtri — Claude API ga yuborilmaydi
         sensitive_type = _detect_sensitive(text)

@@ -15,6 +15,7 @@ services:
       - ../logs:/app/logs
       - ../dashboard:/app/dashboard
       - ../app:/app/app
+      - ../tests:/app/tests
       - ../alembic:/app/alembic
       - ../alembic.ini:/app/alembic.ini
     depends_on:
