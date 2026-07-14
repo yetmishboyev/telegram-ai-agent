@@ -44,6 +44,40 @@ EDUCATIONAL_TOPICS = [
 ]
 
 
+# Post uslublari — ega har post uchun tanlaydi (bot menyusidan).
+POST_STYLES: dict[str, dict] = {
+    "chapani": {
+        "label": "🔥 Chapani",
+        "instruction": (
+            "USLUB — CHAPANI: topvaroq, jonli, ko'chaning tirik tilida yoz. Boshida "
+            "diqqatni darrov ilib oladigan o'tkir ochilish (hook) ber. O'quvchiga "
+            "do'stona, samimiy murojaat qil, ritorik savol va o'rinli hazil ishlat. "
+            "Quruq akademik ohangdan qoch — lekin mazmun aniq va to'g'ri bo'lsin. "
+            "Oxirida o'quvchini fikr yozishga yoki ulashishga undaydigan jonli chaqiruv ber."
+        ),
+    },
+    "expert": {
+        "label": "🎩 Rasmiy-ekspert",
+        "instruction": (
+            "USLUB — EKSPERT: ishonchli, professional lekin iliq ohang. Puxta, vazmin, "
+            "adabiy o'zbek tili. Aniqlik va chuqurlik birinchi o'rinda."
+        ),
+    },
+    "qisqa": {
+        "label": "⚡ Qisqa-lo'nda",
+        "instruction": (
+            "USLUB — QISQA: keraksiz gaplarsiz, faqat mag'zini yoz. Qisqa jumlalar, "
+            "kerak bo'lsa ro'yxat. 120-160 so'z. Har bir gap qiymat bersin."
+        ),
+    },
+}
+DEFAULT_STYLE = "chapani"
+
+
+def style_instruction(style: str) -> str:
+    return POST_STYLES.get(style, POST_STYLES[DEFAULT_STYLE])["instruction"]
+
+
 class NewsFetcher(BaseAgent):
 
     async def run(self, *args, **kwargs):
@@ -96,12 +130,14 @@ class NewsFetcher(BaseAgent):
 
         return unique[:count]
 
-    async def generate_educational_post(self, topic: str) -> str:
+    async def generate_educational_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi."""
         prompt = f"""
 Sen sun'iy intellekt sohasida 8-10 yillik tajribaga ega, o'z auditoriyasiga ega bo'lgan ekspert-muallifsan. Telegram kanalingga quyidagi mavzu bo'yicha post yozasan.
 
 Mavzu: {topic}
+
+{style_instruction(style)}
 
 Talablar:
 - Jonli inson yozgandek yoz — quruq, shablon yoki "AI yozgan" his qildiradigan ohangdan qoch. Xuddi tanishingga tushuntirayotgandek, samimiy va qiziqarli tarzda yoz.
@@ -131,7 +167,7 @@ Talablar:
             max_tokens=700,
         )
 
-    async def generate_news_post(self, news_items: list[dict]) -> str:
+    async def generate_news_post(self, news_items: list[dict], style: str = DEFAULT_STYLE) -> str:
         """Yangiliklar ro'yxatini o'zbek tilidagi Telegram postga aylantiradi."""
         if not news_items:
             return await self._generate_fallback_news_post()
@@ -146,6 +182,8 @@ Sen sun'iy intellekt yangiliklarini kuzatib boradigan, o'z auditoriyasiga ega ta
 
 Manbalar:
 {news_text}
+
+{style_instruction(style)}
 
 Talablar:
 - Jonli inson yozgandek yoz — quruq tarjima yoki shablon ko'rinishidan qoch. Har bir yangilikka o'z munosabatingni yoki qisqa sharhingni qo'sh (nega bu muhim, nima o'zgaradi).
@@ -172,6 +210,28 @@ Talablar:
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
+            max_tokens=800,
+        )
+
+    async def generate_free_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
+        """Ega bergan erkin mavzu/topshiriq bo'yicha post yozadi."""
+        prompt = f"""
+Sen o'z auditoriyasiga ega, tajribali Telegram kanal muallifisan. Quyidagi mavzu/topshiriq bo'yicha kanalingga o'zbek tilida post yoz.
+
+Mavzu / topshiriq: {topic}
+
+{style_instruction(style)}
+
+Talablar:
+- To'g'ri adabiy o'zbek tilida, grammatikaga e'tibor berib yoz.
+- Emojilarni matn ichida tabiiy ishlat (haddan oshirmasdan).
+- Telegram Markdown formatida yoz (**qalin**, _kursiv_).
+- Hajmi mavzuga mos bo'lsin: 150-280 so'z.
+- Oxiriga kanal linkini QO'SHMA — u avtomatik qo'shiladi.
+"""
+        return await self._call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.75,
             max_tokens=800,
         )
 
