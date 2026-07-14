@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(..., min_length=32)
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
+    cors_origins: str = "https://178-156-189-1.sslip.io"
 
     # --- Admin ---
     admin_username: str = "admin"
@@ -85,6 +86,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 @lru_cache

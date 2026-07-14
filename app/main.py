@@ -129,7 +129,7 @@ app = FastAPI(
 # Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://178-156-189-1.sslip.io"],
+    allow_origins=settings.cors_origins_list,
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )

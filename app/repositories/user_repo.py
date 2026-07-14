@@ -48,14 +48,6 @@ class UserRepository:
             .values(is_blacklisted=blacklisted)
         )
 
-    async def set_whitelisted(
-        self, db: AsyncSession, telegram_id: int, whitelisted: bool
-    ) -> None:
-        await db.execute(
-            update(TelegramUser)
-            .where(TelegramUser.telegram_id == telegram_id)
-            .values(is_whitelisted=whitelisted)
-        )
 
     async def get_all(
         self, db: AsyncSession, limit: int = 100, offset: int = 0

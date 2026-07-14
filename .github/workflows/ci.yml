@@ -62,6 +62,9 @@ jobs:
           UV_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
         run: uv sync --no-dev --no-install-project
 
+      - name: Audit dependencies for known vulnerabilities
+        run: uv tool run pip-audit --strict
+
       - name: Run database migrations
         run: uv run alembic upgrade head
 

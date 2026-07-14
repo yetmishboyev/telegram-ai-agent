@@ -68,7 +68,6 @@ class TelegramUser(Base):
         String(32), default="unknown"
     )  # friend, colleague, boss, stranger
     is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_whitelisted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Statistika
     total_messages: Mapped[int] = mapped_column(Integer, default=0)

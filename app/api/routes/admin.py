@@ -70,17 +70,6 @@ async def set_blacklist(
     return {"ok": True}
 
 
-@router.post("/whitelist")
-async def set_whitelist(
-    body: BlacklistIn,
-    db: AsyncSession = Depends(get_db),
-    _: AdminUser = Depends(get_current_admin),
-):
-    await user_repo.set_whitelisted(db, body.telegram_id, body.blacklisted)
-    await db.commit()
-    return {"ok": True}
-
-
 @router.post("/pause")
 async def pause_user(
     body: PauseIn,
