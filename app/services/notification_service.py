@@ -1,4 +1,6 @@
 from loguru import logger
+from telethon import Button
+
 from app.config import settings
 from app.database.models import TelegramUser
 
@@ -43,11 +45,16 @@ class NotificationService:
             f"🏷 **Sabab:** {reason}"
         )
 
+        # "Javob berish" tugmasi — ega chatga o'tmasdan shu yerdan javob yozadi,
+        # javob userbot orqali foydalanuvchiga yetkaziladi (ikki tomonlama relay).
+        buttons = [[Button.inline("✍️ Javob berish", f"relay:{user.telegram_id}".encode())]]
+
         try:
             await bot_service._client.send_message(
                 settings.owner_telegram_id,
                 text,
                 parse_mode="md",
+                buttons=buttons,
             )
             logger.info(
                 f"Bildirishnoma yuborildi: {name} ({user.telegram_id}) — {reason}"

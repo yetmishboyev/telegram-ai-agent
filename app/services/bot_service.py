@@ -107,6 +107,10 @@ class BotService:
 
         step = state.get("step")
 
+        if step == "relaying":
+            await self._handle_relay(event, state, text)
+            return
+
         if step == "editing_post":
             post_id = state.get("post_id", "")
             await self._set_state(None)
@@ -181,6 +185,18 @@ class BotService:
         elif data == "cancel":
             await self._set_state(None)
             await event.edit("❌ Bekor qilindi.", buttons=[[Button.inline("🔙 Menyu", b"menu")]])
+
+        elif data.startswith("relay:"):
+            target_id = int(data.split(":", 1)[1])
+            name = await self._lookup_user_name(target_id)
+            await self._set_state(
+                {"step": "relaying", "target_id": target_id, "target_name": name}
+            )
+            await self._client.send_message(
+                event.chat_id,
+                f"✍️ {name} ({target_id}) ga javobingizni yozing:",
+                buttons=CANCEL_ROW,
+            )
 
         elif data.startswith("approve_post:"):
             post_id = data.split(":", 1)[1]
@@ -323,6 +339,55 @@ class BotService:
         await r.delete(f"pending_post:{post_id}")
         logger.info(f"Post rad etildi: id={post_id}")
         await event.edit("🗑 Post rad etildi va o'chirildi.")
+
+    # ─── ikki tomonlama relay ──────────────────────────────────────────────────
+
+    async def _handle_relay(self, event, state: dict, text: str) -> None:
+        """Eganing yozgan javobini foydalanuvchiga yetkazadi va tasdiqlaydi."""
+        target_id = state.get("target_id")
+        target_name = state.get("target_name") or str(target_id)
+        await self._set_state(None)
+
+        if not target_id:
+            await self._client.send_message(event.chat_id, "❌ Qabul qiluvchi topilmadi.")
+            return
+
+        ok = await self.relay_reply(int(target_id), text)
+        if ok:
+            await self._client.send_message(
+                event.chat_id, f"✅ {target_name} ga javobingiz yuborildi."
+            )
+        else:
+            await self._client.send_message(
+                event.chat_id,
+                f"❌ {target_name} ga yuborishda xato. Keyinroq qayta urinib ko'ring.",
+            )
+
+    async def relay_reply(self, target_id: int, text: str) -> bool:
+        """Eganing javobini userbot orqali (Shaxzodbek akkauntidan) yetkazadi."""
+        from app.services.telegram_service import telegram_service
+        try:
+            await telegram_service.send_message(target_id, text)
+            logger.info(f"Relay: egadan {target_id} ga javob yuborildi")
+            return True
+        except Exception as e:
+            logger.error(f"Relay xatosi ({target_id}): {e}")
+            return False
+
+    async def _lookup_user_name(self, telegram_id: int) -> str:
+        """telegram_id bo'yicha foydalanuvchi ismini topadi (topilmasa id qaytaradi)."""
+        from sqlalchemy import select
+        from app.database.session import AsyncSessionLocal
+        from app.database.models import TelegramUser
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(
+                    select(TelegramUser).where(TelegramUser.telegram_id == telegram_id)
+                )
+                u = r.scalar_one_or_none()
+                return u.display_name if u else str(telegram_id)
+        except Exception:
+            return str(telegram_id)
 
     async def _send_main_menu(self, chat_id) -> None:
         from app.database.session import AsyncSessionLocal
