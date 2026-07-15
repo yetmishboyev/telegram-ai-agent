@@ -181,50 +181,79 @@ Talablar:
             max_tokens=700,
         )
 
-    async def generate_news_post(self, news_items: list[dict], style: str = DEFAULT_STYLE) -> str:
-        """Yangiliklar ro'yxatini o'zbek tilidagi Telegram postga aylantiradi."""
-        if not news_items:
-            return await self._generate_fallback_news_post()
+    async def curate_top_news(self, items: list[dict]) -> dict | None:
+        """Yangiliklar ichidan auditoriya uchun ENG muhimini tanlaydi (curation).
 
-        news_text = "\n\n".join(
-            f"{i+1}. {item['title']}\n{item['desc']}"
-            for i, item in enumerate(news_items)
+        Returns: {item, reason} yoki None (ro'yxat bo'sh bo'lsa).
+        """
+        from app.ai.agents.json_parse import parse_json_response
+
+        if not items:
+            return None
+        if len(items) == 1:
+            return {"item": items[0], "reason": ""}
+
+        listing = "\n".join(
+            f"{i}. {it['title']}\n   {it.get('desc', '')[:150]}"
+            for i, it in enumerate(items)
         )
+        prompt = f"""Sen sun'iy intellekt mavzusidagi o'zbek Telegram kanalining bosh muharririsan. Auditoriya: texnologiyaga qiziquvchi oddiy foydalanuvchilar va IT mutaxassislar.
 
-        prompt = f"""
-Sen sun'iy intellekt yangiliklarini kuzatib boradigan, o'z auditoriyasiga ega tajribali tahlilchi-muallifsan. Quyidagi inglizcha manbalar asosida Telegram kanalga o'zbek tilida post tayyorla.
+Quyidagi yangiliklar ichidan kanal uchun ENG qimmatli BITTASINI tanla — auditoriya hayotiga eng ko'p ta'sir qiladigani yoki eng qiziqarli muhokama uyg'otadigani:
 
-Manbalar:
-{news_text}
+{listing}
+
+Faqat JSON qaytar: {{"index": <raqam>, "reason": "nega aynan shu — 1 gap"}}"""
+
+        try:
+            raw = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3, max_tokens=200,
+            )
+            data = parse_json_response(raw)
+            idx = int(data.get("index", 0))
+            if not (0 <= idx < len(items)):
+                idx = 0
+            return {"item": items[idx], "reason": str(data.get("reason", ""))[:200]}
+        except Exception as e:
+            logger.warning(f"Curation xatosi — birinchi yangilik olinadi: {e}")
+            return {"item": items[0], "reason": ""}
+
+    async def generate_deep_news_post(
+        self, item: dict, style: str = DEFAULT_STYLE, curation_reason: str = ""
+    ) -> str:
+        """BITTA yangilikka chuqur tahlil posti — professional format.
+
+        Eski "3 ta yangilik × 2-3 gap" digest o'rniga: hook → fakt → nega muhim
+        → bizga nima anglatadi → xulosa/CTA.
+        """
+        reason_line = f"\nMuharrir izohi (nega tanlangan): {curation_reason}" if curation_reason else ""
+        prompt = f"""Sen sun'iy intellekt sohasini chuqur biladigan, o'z auditoriyasiga ega tahlilchi-muallifsan. Quyidagi BITTA yangilik asosida Telegram kanalga o'zbek tilida CHUQUR TAHLILIY post yoz.
+
+Yangilik (inglizcha manba):
+Sarlavha: {item.get('title', '')}
+Tavsif: {item.get('desc', '')}
+Havola: {item.get('link', '')}{reason_line}
 
 {style_instruction(style)}
 
-Talablar:
-- Jonli inson yozgandek yoz — quruq tarjima yoki shablon ko'rinishidan qoch. Har bir yangilikka o'z munosabatingni yoki qisqa sharhingni qo'sh (nega bu muhim, nima o'zgaradi).
-- To'g'ri adabiy o'zbek tilida yoz. Tarjimada ma'noni to'liq va aniq yetkazishga harakat qil.
-- Grammatika xatolariga yo'l qo'yma. Jumlalar ravon o'qilsin.
-- Emojilarni sarlavhalarda va matn ichida tabiiy tarzda ishlat — mazmunni jonlantirish uchun, lekin haddan oshirmasdan.
-- Telegram Markdown formatida yoz (**qalin**, _kursiv_).
-- Har bir yangilik uchun 2–3 ta aniq va mazmunan to'g'ri gap yoz.
-- Quyidagi tuzilishda yoz:
+Post tuzilishi (sarlavhalarni yozma, tabiiy oqim bo'lsin):
+1. HOOK — birinchi 1-2 gap o'quvchini to'xtatsin (savol, kutilmagan fakt yoki natija).
+2. NIMA BO'LDI — aniq faktlar: kim, nima, qachon. Taxmin qo'shma, manbada bo'lmagan raqam to'qima.
+3. NEGA BU MUHIM — sening tahliling: bu sohani/bozorni qanday o'zgartiradi.
+4. BIZGA NIMA ANGLATADI — O'zbekistondagi oddiy foydalanuvchi yoki mutaxassis uchun amaliy ma'nosi.
+5. XULOSA + savol yoki CTA — o'quvchini fikr bildirishга undaydigan yakun.
 
-🌐 **AI Yangiliklari**
-
-1️⃣ **[1-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun + o'z sharhing, 2–3 gap. Asosiy g'oyani tushunarli tarzda yetkazib ber.]
-
-2️⃣ **[2-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun + o'z sharhing, 2–3 gap.]
-
-3️⃣ **[3-yangilik sarlavhasi — o'zbekcha, aniq]**
-[Qisqa mazmun + o'z sharhing, 2–3 gap.]
-
-#AI #SuniyIntellekt #Yangiliklar #Texnologiya
+Qoidalar:
+- BITTA yangilik, chuqur — boshqa yangiliklar haqida yozma.
+- 180-260 so'z. Telegram Markdown (**qalin**, _kursiv_). Emoji tabiiy, me'yorida.
+- Sarlavha qatori bilan boshla: emoji + **qalin sarlavha** (o'zbekcha, jozibali).
+- Oxiriga 3-4 ta hashtag. Kanal linkini QO'SHMA.
 """
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=800,
+            temperature=0.7,
+            max_tokens=900,
         )
 
     async def generate_growth_strategy(self, stats: dict) -> dict | None:
@@ -336,33 +365,6 @@ Talablar:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.75,
             max_tokens=800,
-        )
-
-    async def _generate_fallback_news_post(self) -> str:
-        """Yangilik topilmasa, umumiy AI haqida post yozadi."""
-        prompt = """
-Sen sun'iy intellekt sohasidagi tajribali ekspert-muallifsan. Bugungi eng dolzarb 3 ta tendensiya yoki yangilik haqida
-Telegram kanalga o'zbek tilida, jonli inson yozgandek (shablon emas), o'z fikringni ham qo'shib post tayyorla.
-Emojilarni matn ichida tabiiy ishlat. Grammatikaga e'tibor ber, jumlalar ravon bo'lsin.
-
-Tuzilish:
-🌐 **AI Yangiliklari**
-
-1️⃣ **[Sarlavha]**
-[2–3 gap]
-
-2️⃣ **[Sarlavha]**
-[2–3 gap]
-
-3️⃣ **[Sarlavha]**
-[2–3 gap]
-
-#AI #SuniyIntellekt #Yangiliklar #Texnologiya
-"""
-        return await self._call_llm(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=600,
         )
 
     async def regenerate_post(
