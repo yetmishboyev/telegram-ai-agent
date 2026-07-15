@@ -67,6 +67,15 @@ class SchedulerService:
             misfire_grace_time=3600,
         )
 
+        # Har 6 soatda — obunachilar soni snapshot (o'sish dinamikasi)
+        self._scheduler.add_job(
+            func=channel_poster.snapshot_subscribers,
+            trigger=CronTrigger(hour="*/6", minute=15, timezone=self._tz),
+            id="subscriber_snapshot",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+
         self._scheduler.start()
         logger.info(f"Scheduler ishga tushdi: har kuni {reminder_hour:02d}:00 (Toshkent vaqti)")
         logger.info("Kanal postlar: Du-Ju 09:00 ta'lim · 12:00 yangilik · 16:00 yangilik | Sha dam olish | Yak 12:00 dayjest")

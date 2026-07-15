@@ -27,7 +27,24 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-5 gap-4 mb-6">
+        <div class="card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Obunachilar</span>
+                <div class="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-sky-400" x-text="stats.subscribers != null ? fmtNum(stats.subscribers) : '—'"></div>
+            <div class="flex items-center gap-2 mt-1.5">
+                <span class="text-[10px]" :class="subGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                    x-text="subSeries.length ? (subGrowth >= 0 ? '+' : '') + subGrowth + ' / ' + rangeDays + ' kun' : ''"></span>
+                <span class="text-[10px] text-slate-600" x-show="stats.engagement_rate != null"
+                    x-text="'ER: ' + stats.engagement_rate + '%'"></span>
+            </div>
+        </div>
         <div class="card p-5">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Jami postlar</span>
@@ -196,6 +213,62 @@
                         <div class="text-[10px] text-slate-600 mt-0.5" x-text="t.posts + ' ta post · jami ' + fmtNum(t.total_views)"></div>
                     </div>
                 </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Obunachilar dinamikasi -->
+    <div class="card p-5 mb-5" :class="chartLoading ? 'opacity-50' : ''" style="transition: opacity .2s">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-baseline gap-3">
+                <h2 class="text-sm font-semibold text-slate-300">Obunachilar dinamikasi</h2>
+                <span class="text-[11px] text-slate-600"
+                    x-text="subSeries.length ? ((subGrowth >= 0 ? '+' : '') + subGrowth + ' obunachi / ' + rangeDays + ' kun') : ''"></span>
+            </div>
+            <button @click="takeSnapshot()" class="btn btn-ghost text-xs">📸 Hozir o'lchash</button>
+        </div>
+
+        <template x-if="subSeries.length < 2">
+            <div class="h-24 flex flex-col items-center justify-center text-slate-600 text-sm gap-1">
+                <span x-text="subSeries.length === 1 ? 'Hozircha bitta o\'lchov bor (' + subSeries[0].count + ') — dinamika 2-o\'lchovdan ko\'rinadi.' : 'Hali o\'lchov yo\'q.'"></span>
+                <span class="text-xs text-slate-700">Har 6 soatda avtomatik o'lchanadi</span>
+            </div>
+        </template>
+
+        <div x-show="subSeries.length >= 2" class="relative mt-3" @mouseleave="subHover = null">
+            <div class="flex">
+                <div class="flex flex-col justify-between h-24 pr-2 text-right shrink-0" style="width:44px">
+                    <span class="text-[10px] text-slate-600 leading-none" style="font-variant-numeric: tabular-nums" x-text="fmtNum(subMax)"></span>
+                    <span class="text-[10px] text-slate-600 leading-none" style="font-variant-numeric: tabular-nums" x-text="fmtNum(subMin)"></span>
+                </div>
+                <div class="relative flex-1 h-24">
+                    <div class="absolute left-0 right-0 top-0 border-t border-[#1a2035]"></div>
+                    <div class="absolute left-0 right-0 bottom-0 border-t border-[#1a2035]"></div>
+                    <!-- chiziq: 2px, non-scaling stroke -->
+                    <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <polyline :points="subPoints" fill="none" stroke="#3987e5" stroke-width="2"
+                            stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+                    </svg>
+                    <!-- hover slotlari + nuqtalar -->
+                    <div class="absolute inset-0 flex">
+                        <template x-for="(s, i) in subSeries" :key="s.date">
+                            <div class="relative flex-1 h-full cursor-pointer" @mouseenter="subHover = i" @click="subHover = i">
+                                <div class="absolute w-2 h-2 rounded-full transition-all"
+                                    :style="`left: 50%; top: ${subY(s.count)}%; transform: translate(-50%,-50%);
+                                             background: #3987e5; box-shadow: 0 0 0 2px #0f1320;
+                                             scale: ${subHover === i ? '1.5' : '1'}`"></div>
+                            </div>
+                        </template>
+                    </div>
+                    <template x-if="subHover !== null && subSeries[subHover]">
+                        <div class="absolute z-10 pointer-events-none px-3 py-2 rounded-lg text-xs shadow-xl border border-[#253050]"
+                            style="background:#131929; bottom: calc(100% + 4px);"
+                            :style="`left: ${Math.min(80, subHover * 100 / subSeries.length)}%`">
+                            <div class="font-bold text-slate-100 text-sm" x-text="fmtNum(subSeries[subHover].count) + ' obunachi'"></div>
+                            <div class="text-slate-500 mt-0.5" x-text="fmtDay(subSeries[subHover].date)"></div>
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
     </div>
@@ -381,6 +454,9 @@ function channelPage() {
         lastUpdated: '',
         tlHover: null,
         tpHover: null,
+        subSeries: [],
+        subGrowth: 0,
+        subHover: null,
 
         get filteredPosts() {
             if (!this.filter) return this.posts;
@@ -405,6 +481,22 @@ function channelPage() {
         get timelineTotalLabel() {
             const total = this.timeline.reduce((s, d) => s + d.views, 0);
             return this.fmtNum(total) + " ko'rish / " + this.rangeDays + ' kun';
+        },
+        get subMax() { return Math.max(...this.subSeries.map(s => s.count)); },
+        get subMin() { return Math.min(...this.subSeries.map(s => s.count)); },
+        get subPoints() {
+            // polyline nuqtalari: x teng taqsimlangan (slot markazlari), y min-max oraliqda
+            const n = this.subSeries.length;
+            if (n < 2) return '';
+            return this.subSeries.map((s, i) =>
+                `${(i + 0.5) * 100 / n},${this.subY(s.count)}`
+            ).join(' ');
+        },
+        subY(count) {
+            const range = this.subMax - this.subMin;
+            if (range === 0) return 50;
+            // 10% chetki padding bilan
+            return 10 + (1 - (count - this.subMin) / range) * 80;
         },
 
         barH(v) {
@@ -440,13 +532,25 @@ function channelPage() {
 
         async loadCharts() {
             this.chartLoading = true;
-            const [tl, tp] = await Promise.all([
+            const [tl, tp, sb] = await Promise.all([
                 api('/channel/timeline?days=' + this.rangeDays),
                 api('/channel/type-performance'),
+                api('/channel/subscribers?days=' + this.rangeDays),
             ]);
             if (tl) this.timeline = tl.series;
             if (tp) this.typePerf = tp;
+            if (sb) { this.subSeries = sb.series; this.subGrowth = sb.growth; }
             this.chartLoading = false;
+        },
+
+        async takeSnapshot() {
+            const r = await api('/channel/subscribers/snapshot', 'POST');
+            if (r?.ok) {
+                window.toast('Obunachilar soni o\'lchandi: ' + r.count, 'success');
+                await Promise.all([this.load(), this.loadCharts()]);
+            } else {
+                window.toast('O\'lchashda xato — bot kanalda adminmi?', 'error');
+            }
         },
 
         async setRange(d) {
