@@ -8,7 +8,6 @@ import json
 import re
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
-_JSON_BLOCK_RE = re.compile(r"(\{.*\}|\[.*\])", re.DOTALL)
 
 
 def parse_json_response(raw: str) -> dict | list:
@@ -34,8 +33,16 @@ def parse_json_response(raw: str) -> dict | list:
     except json.JSONDecodeError:
         pass
 
-    block_match = _JSON_BLOCK_RE.search(text)
-    if block_match:
-        return json.loads(block_match.group(1))
+    # Birinchi { yoki [ dan boshlab TO'LIQ obyektni raw_decode bilan olamiz —
+    # greedy regex oxirgi } gacha qamrab, JSONdan keyingi matnda "Extra data"
+    # xatosi berardi (model ba'zan JSONdan keyin izoh yozadi).
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch in "{[":
+            try:
+                obj, _ = decoder.raw_decode(text, i)
+                return obj
+            except json.JSONDecodeError:
+                continue
 
     raise json.JSONDecodeError("Javobda JSON topilmadi", raw, 0)

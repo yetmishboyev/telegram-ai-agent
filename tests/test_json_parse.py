@@ -30,6 +30,16 @@ class TestParseJsonResponse:
         raw = 'Mana natija:\n{"a": 1}\nUmid qilamanki foydali.'
         assert parse_json_response(raw) == {"a": 1}
 
+    def test_json_followed_by_prose_with_braces(self):
+        # Regressiya: model JSONdan keyin { } li izoh yozsa, greedy regex
+        # oxirgi } gacha qamrab "Extra data" xatosi berardi.
+        raw = '{"a": 1}\n\nIzoh: bu {muhim} natija edi. Yana bir blok: {"b": 2}'
+        assert parse_json_response(raw) == {"a": 1}
+
+    def test_fenced_json_with_trailing_prose(self):
+        raw = '```json\n{"holat": "yaxshi", "x": [1, 2]}\n```\nQo\'shimcha tushuntirish shu yerda {qavs} bilan.'
+        assert parse_json_response(raw) == {"holat": "yaxshi", "x": [1, 2]}
+
     def test_raises_json_decode_error_for_non_json_text(self):
         with pytest.raises(json.JSONDecodeError):
             parse_json_response("bu umuman JSON emas")
