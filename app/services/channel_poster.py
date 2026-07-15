@@ -160,10 +160,10 @@ class ChannelPoster:
             new_text = await news_fetcher.generate_free_post(old_topic, style)
             await self._send_for_approval(new_text, "free", old_topic, style)
         else:
-            # Yangiliklar uchun tasodifiy tartibda oladi — boshqa maqolalar chiqadi
-            news_items = await news_fetcher.get_ai_news_shuffled(count=3)
-            new_text = await news_fetcher.generate_news_post(news_items, style)
-            await self._send_for_approval(new_text, "news", "", style)
+            # Yangiliklar: tasodifiy tartib — curation boshqa yangilikni tanlaydi
+            new_text, topic = await self._build_deep_news(style, shuffled=True)
+            if new_text:
+                await self._send_for_approval(new_text, "news", topic, style)
 
     async def refresh_views(self) -> None:
         """Kanalga yuborilgan postlarning ko'rish sonini Telegram'dan yangilaydi."""
@@ -261,15 +261,39 @@ class ChannelPoster:
             logger.error(f"Ta'limiy post xatosi: {e}")
 
     async def post_news(self) -> None:
-        """12:00 va 16:00 — AI yangiliklari post (egaga tasdiqlashga yuboriladi)."""
+        """12:00 va 16:00 — AI yangiligi: curation + BITTA yangilikka chuqur tahlil."""
         try:
             from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
-            logger.info("AI yangiliklari yig'ilmoqda...")
-            news_items = await news_fetcher.get_ai_news(count=3)
-            text = await news_fetcher.generate_news_post(news_items, DEFAULT_STYLE)
-            await self._send_for_approval(text, "news", "", DEFAULT_STYLE)
+            logger.info("AI yangiliklari yig'ilmoqda (curation uchun keng ro'yxat)...")
+            text, topic = await self._build_deep_news(DEFAULT_STYLE)
+            if not text:
+                logger.warning("Yangilik topilmadi — post o'tkazib yuborildi")
+                return
+            await self._send_for_approval(text, "news", topic, DEFAULT_STYLE)
         except Exception as e:
             logger.error(f"Yangiliklar post xatosi: {e}")
+
+    async def _build_deep_news(
+        self, style: str, shuffled: bool = False
+    ) -> tuple[str | None, str]:
+        """Keng yangilik ro'yxatidan eng muhimini tanlab, chuqur post tayyorlaydi.
+
+        Returns: (post_matni | None, tanlangan sarlavha).
+        """
+        from app.services.news_fetcher import news_fetcher
+        if shuffled:
+            items = await news_fetcher.get_ai_news_shuffled(count=10)
+        else:
+            items = await news_fetcher.get_ai_news(count=10)
+        picked = await news_fetcher.curate_top_news(items)
+        if not picked:
+            return None, ""
+        item = picked["item"]
+        logger.info(f"Curation tanladi: {item['title'][:70]} — {picked['reason'][:80]}")
+        text = await news_fetcher.generate_deep_news_post(
+            item, style, curation_reason=picked["reason"]
+        )
+        return text, item["title"][:200]
 
     async def create_on_demand(self, post_type: str, style: str, topic: str = "") -> None:
         """Bot menyusidan chaqiriladigan on-demand post yaratish (tur + uslub)."""
@@ -279,8 +303,10 @@ class ChannelPoster:
                 topic = topic or news_fetcher.get_todays_topic()
                 text = await news_fetcher.generate_educational_post(topic, style)
             elif post_type == "news":
-                news_items = await news_fetcher.get_ai_news(count=3)
-                text = await news_fetcher.generate_news_post(news_items, style)
+                text, topic = await self._build_deep_news(style)
+                if not text:
+                    await self._notify_owner_text("❌ Hozircha yangilik topilmadi — keyinroq urinib ko'ring.")
+                    return
             else:  # free — ega bergan mavzu
                 text = await news_fetcher.generate_free_post(topic, style)
             await self._send_for_approval(text, post_type, topic, style)
