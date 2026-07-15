@@ -156,6 +156,18 @@ class ChannelPoster:
             logger.info(f"Boshqa ta'limiy post: '{old_topic}' → '{new_topic}'")
             new_text = await news_fetcher.generate_educational_post(new_topic, style)
             await self._send_for_approval(new_text, "educational", new_topic, style)
+        elif post_type == "practical":
+            import random
+            from app.services.news_fetcher import PRACTICAL_TOPICS
+            new_topic = random.choice([t for t in PRACTICAL_TOPICS if t != old_topic])
+            new_text = await news_fetcher.generate_practical_post(new_topic, style)
+            await self._send_for_approval(new_text, "practical", new_topic, style)
+        elif post_type == "tool":
+            import random
+            from app.services.news_fetcher import AI_TOOLS
+            new_tool = random.choice([t for t in AI_TOOLS if t != old_topic])
+            new_text = await news_fetcher.generate_tool_review_post(new_tool, style)
+            await self._send_for_approval(new_text, "tool", new_tool, style)
         elif post_type == "free":
             new_text = await news_fetcher.generate_free_post(old_topic, style)
             await self._send_for_approval(new_text, "free", old_topic, style)
@@ -249,6 +261,42 @@ class ChannelPoster:
         except Exception as e:
             logger.error(f"Haftalik dayjest xatosi: {e}")
 
+    # Haftalik kontent taqvimi: haftaning kuni → ertalabki post formati.
+    # AI strategiya tavsiyasi: kuniga ko'pi bilan 2 post (09:00 format + 12:00 yangilik).
+    WEEKLY_CALENDAR = {
+        0: "educational",  # Dushanba
+        1: "practical",    # Seshanba
+        2: "tool",         # Chorshanba
+        3: "educational",  # Payshanba
+        4: "practical",    # Juma
+    }
+
+    async def post_by_calendar(self) -> None:
+        """09:00 — haftalik taqvim bo'yicha format tanlab post tayyorlaydi."""
+        import pytz
+        from datetime import datetime
+        from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
+
+        weekday = datetime.now(pytz.timezone("Asia/Tashkent")).weekday()
+        fmt = self.WEEKLY_CALENDAR.get(weekday)
+        if not fmt:
+            return
+        try:
+            if fmt == "practical":
+                topic = news_fetcher.get_todays_practical_topic()
+                logger.info(f"Taqvim: amaliy post — {topic}")
+                text = await news_fetcher.generate_practical_post(topic, DEFAULT_STYLE)
+                await self._send_for_approval(text, "practical", topic, DEFAULT_STYLE)
+            elif fmt == "tool":
+                tool = news_fetcher.get_todays_tool()
+                logger.info(f"Taqvim: vosita sharhi — {tool}")
+                text = await news_fetcher.generate_tool_review_post(tool, DEFAULT_STYLE)
+                await self._send_for_approval(text, "tool", tool, DEFAULT_STYLE)
+            else:
+                await self.post_educational()
+        except Exception as e:
+            logger.error(f"Taqvim posti xatosi ({fmt}): {e}")
+
     async def post_educational(self) -> None:
         """09:00 — AI ta'limiy post (egaga tasdiqlashga yuboriladi)."""
         try:
@@ -307,6 +355,12 @@ class ChannelPoster:
                 if not text:
                     await self._notify_owner_text("❌ Hozircha yangilik topilmadi — keyinroq urinib ko'ring.")
                     return
+            elif post_type == "practical":
+                topic = topic or news_fetcher.get_todays_practical_topic()
+                text = await news_fetcher.generate_practical_post(topic, style)
+            elif post_type == "tool":
+                topic = topic or news_fetcher.get_todays_tool()
+                text = await news_fetcher.generate_tool_review_post(topic, style)
             else:  # free — ega bergan mavzu
                 text = await news_fetcher.generate_free_post(topic, style)
             await self._send_for_approval(text, post_type, topic, style)

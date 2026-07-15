@@ -505,11 +505,13 @@ function channelPage() {
         },
         typeLabel(t) {
             return ({educational: "🎓 Ta'limiy", news: '🌐 Yangilik', quiz: '❓ Quiz',
-                     poll: "📊 So'rovnoma", free: '✍️ Erkin', digest: '📊 Dayjest'})[t] || t;
+                     poll: "📊 So'rovnoma", free: '✍️ Erkin', digest: '📊 Dayjest',
+                     practical: '🛠 Amaliy', tool: '🧰 Vosita'})[t] || t;
         },
         typeBadge(t) {
             return ({educational: 'badge-purple', news: 'badge-blue', quiz: 'badge-yellow',
-                     poll: 'badge-yellow', free: 'badge-green', digest: 'badge-gray'})[t] || 'badge-gray';
+                     poll: 'badge-yellow', free: 'badge-green', digest: 'badge-gray',
+                     practical: 'badge-green', tool: 'badge-blue'})[t] || 'badge-gray';
         },
         fmtDay(iso) {
             const d = new Date(iso + 'T00:00:00');

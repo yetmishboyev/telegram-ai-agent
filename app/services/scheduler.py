@@ -22,29 +22,22 @@ class SchedulerService:
             misfire_grace_time=300,
         )
 
-        # Du-Ju (0-4): 09:00 — AI ta'limiy post
+        # Du-Ju (0-4): 09:00 — haftalik taqvim bo'yicha post
+        # (Du/Pay: ta'limiy · Se/Ju: amaliy · Chor: vosita sharhi)
         self._scheduler.add_job(
-            func=channel_poster.post_educational,
+            func=channel_poster.post_by_calendar,
             trigger=CronTrigger(day_of_week="mon-fri", hour=9, minute=0, timezone=self._tz),
-            id="channel_educational",
+            id="channel_calendar_morning",
             replace_existing=True,
             misfire_grace_time=3600,
         )
 
-        # Du-Ju (0-4): 12:00 — AI yangiliklari post
+        # Du-Ju (0-4): 12:00 — kunning eng muhim AI yangiligi (chuqur tahlil)
+        # AI strategiya tavsiyasi: kuniga ko'pi bilan 2 post — 16:00 posti olib tashlandi.
         self._scheduler.add_job(
             func=channel_poster.post_news,
             trigger=CronTrigger(day_of_week="mon-fri", hour=12, minute=0, timezone=self._tz),
             id="channel_news_noon",
-            replace_existing=True,
-            misfire_grace_time=3600,
-        )
-
-        # Du-Ju (0-4): 16:00 — AI yangiliklari post
-        self._scheduler.add_job(
-            func=channel_poster.post_news,
-            trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=0, timezone=self._tz),
-            id="channel_news_evening",
             replace_existing=True,
             misfire_grace_time=3600,
         )
@@ -78,7 +71,10 @@ class SchedulerService:
 
         self._scheduler.start()
         logger.info(f"Scheduler ishga tushdi: har kuni {reminder_hour:02d}:00 (Toshkent vaqti)")
-        logger.info("Kanal postlar: Du-Ju 09:00 ta'lim · 12:00 yangilik · 16:00 yangilik | Sha dam olish | Yak 12:00 dayjest")
+        logger.info(
+            "Kanal taqvimi: Du/Pay ta'lim · Se/Ju amaliy · Chor vosita (09:00) | "
+            "Du-Ju 12:00 yangilik | Sha dam | Yak 12:00 dayjest"
+        )
 
     def stop(self) -> None:
         if self._scheduler.running:
