@@ -399,6 +399,38 @@ class ChannelPoster:
         await r.delete(f"pending_poll:{poll_id}")
         await self.create_quiz_on_demand(old["kind"], old.get("topic", ""))
 
+    # ─── obunachi statistikasi ──────────────────────────────────────────────────
+
+    async def snapshot_subscribers(self) -> int | None:
+        """Kanal obunachilari sonini Bot API'dan olib DB ga yozadi (har 6 soatda)."""
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(
+                    f"https://api.telegram.org/bot{settings.telegram_bot_token}/getChatMemberCount",
+                    params={"chat_id": CHANNEL},
+                )
+                data = resp.json()
+            if not data.get("ok"):
+                logger.error(f"getChatMemberCount xatosi: {data}")
+                return None
+            count = int(data["result"])
+        except Exception as e:
+            logger.error(f"Obunachi sonini olishda xato: {e}")
+            return None
+
+        try:
+            from app.database.session import AsyncSessionLocal
+            from app.database.models import SubscriberSnapshot
+            async with AsyncSessionLocal() as db:
+                db.add(SubscriberSnapshot(count=count))
+                await db.commit()
+            logger.info(f"Obunachi snapshot: {count}")
+            return count
+        except Exception as e:
+            logger.error(f"Obunachi snapshot saqlashda xato: {e}")
+            return None
+
     async def _notify_owner_text(self, text: str) -> None:
         try:
             from app.services.bot_service import bot_service

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.database.session import get_db
-from app.database.models import AdminUser, ChannelPost
+from app.database.models import AdminUser, ChannelPost, SubscriberSnapshot
 from app.api.dependencies import get_current_admin
 
 router = APIRouter(prefix="/channel", tags=["channel"])
@@ -49,10 +49,23 @@ async def get_channel_stats(
     edu_avg = round(float(edu_views_r.scalar() or 0), 1)
     news_avg = round(float(news_views_r.scalar() or 0), 1)
 
+    # Joriy obunachi soni (oxirgi snapshot) + engagement rate
+    sub_r = await db.execute(
+        select(SubscriberSnapshot).order_by(desc(SubscriberSnapshot.taken_at)).limit(1)
+    )
+    last_snap = sub_r.scalar_one_or_none()
+    subscribers = last_snap.count if last_snap else None
+    engagement_rate = (
+        round(avg_views / subscribers * 100, 1)
+        if subscribers and subscribers > 0 else None
+    )
+
     return {
         "total_posts": total,
         "total_views": total_views,
         "avg_views": avg_views,
+        "subscribers": subscribers,
+        "engagement_rate": engagement_rate,
         "educational_count": edu_count,
         "news_count": news_count,
         "educational_avg_views": edu_avg,
@@ -178,6 +191,51 @@ async def get_type_performance(
     ]
 
 
+@router.get("/subscribers")
+async def get_subscriber_series(
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Obunachilar dinamikasi: kunlik seriya (kunning oxirgi snapshot'i) + o'sish."""
+    from datetime import timedelta
+
+    days = max(1, min(days, 180))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    result = await db.execute(
+        select(SubscriberSnapshot)
+        .where(SubscriberSnapshot.taken_at >= since)
+        .order_by(SubscriberSnapshot.taken_at)
+    )
+    snaps = list(result.scalars().all())
+
+    # Har kun uchun oxirgi qiymat
+    by_day: dict[str, int] = {}
+    for s in snaps:
+        by_day[str(s.taken_at.date())] = s.count
+
+    series = [{"date": d, "count": c} for d, c in sorted(by_day.items())]
+    current = snaps[-1].count if snaps else None
+    first = snaps[0].count if snaps else None
+    growth = (current - first) if (current is not None and first is not None) else 0
+
+    return {
+        "days": days,
+        "series": series,
+        "current": current,
+        "growth": growth,
+    }
+
+
+@router.post("/subscribers/snapshot")
+async def trigger_subscriber_snapshot(_: AdminUser = Depends(get_current_admin)):
+    """Obunachi sonini hozir olish (qo'lda)."""
+    from app.services.channel_poster import channel_poster
+    count = await channel_poster.snapshot_subscribers()
+    return {"ok": count is not None, "count": count}
+
+
 STRATEGY_CACHE_KEY = "channel_strategy"
 STRATEGY_TTL = 86400  # 24 soat
 
@@ -188,11 +246,17 @@ async def _collect_strategy_stats(db: AsyncSession) -> dict:
     perf = await get_type_performance(db=db, _=None)  # type: ignore[arg-type]
     tl = await get_channel_timeline(days=30, db=db, _=None)  # type: ignore[arg-type]
     recent_days = [d for d in tl["series"] if d["posts"] > 0][-14:]
+    subs = await get_subscriber_series(days=30, db=db, _=None)  # type: ignore[arg-type]
     return {
         "umumiy": {k: v for k, v in stats.items() if k != "best_post"},
         "eng_yaxshi_post": stats.get("best_post"),
         "tur_boyicha": perf,
         "oxirgi_faol_kunlar": recent_days,
+        "obunachilar": {
+            "joriy": subs["current"],
+            "30_kunlik_osish": subs["growth"],
+            "dinamika": subs["series"][-14:],
+        },
     }
 
 

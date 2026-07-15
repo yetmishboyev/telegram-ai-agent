@@ -279,6 +279,18 @@ class FaqEntry(Base):
     )
 
 
+class SubscriberSnapshot(Base):
+    """Kanal obunachilari soni — davriy snapshot (o'sish dinamikasi uchun)."""
+
+    __tablename__ = "subscriber_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    taken_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class AgentLog(Base):
     """Agent faoliyati loglari"""
 
