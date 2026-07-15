@@ -46,6 +46,38 @@ EDUCATIONAL_TOPICS = [
 ]
 
 
+# Amaliy qo'llanma postlari uchun mavzular (rotatsiya) — eng ulashiladigan format
+PRACTICAL_TOPICS = [
+    "ChatGPT bilan professional CV yozish",
+    "AI yordamida ish e'lonlariga cover letter tayyorlash",
+    "ChatGPT'dan ingliz tilini o'rganishda foydalanish",
+    "AI bilan taqdimot (slaydlar) tayyorlash",
+    "Telegram kanal uchun AI bilan kontent reja tuzish",
+    "AI yordamida email yozishmalarini professional qilish",
+    "ChatGPT bilan biznes g'oyani tekshirish",
+    "AI bilan hujjat va shartnomalarni tahlil qilish",
+    "Excel/Sheets ishlarini AI bilan avtomatlashtirish",
+    "AI yordamida o'quv reja (study plan) tuzish",
+    "Prompt yozishning amaliy formulasi",
+    "AI bilan ijtimoiy tarmoq postlarini yozish",
+]
+
+# AI vosita sharhlari uchun ro'yxat (rotatsiya)
+AI_TOOLS = [
+    "ChatGPT (OpenAI)",
+    "Claude (Anthropic)",
+    "Gemini (Google)",
+    "Midjourney — rasm generatsiya",
+    "Notion AI — eslatma va hujjatlar",
+    "Perplexity — AI qidiruv",
+    "ElevenLabs — ovoz generatsiya",
+    "Cursor — AI kod muharriri",
+    "Canva Magic Studio — dizayn",
+    "Suno — musiqa generatsiya",
+    "NotebookLM — hujjat tahlili",
+    "Grammarly — yozishma tahriri",
+]
+
 # Post uslublari — ega har post uchun tanlaydi (bot menyusidan).
 POST_STYLES: dict[str, dict] = {
     "chapani": {
@@ -93,9 +125,10 @@ class NewsFetcher(BaseAgent):
 
     async def _call_llm(self, *args, **kwargs) -> str:
         """Post generatsiyasi natijasini lotinlashtiradi — LLM ba'zan lotincha
-        o'zbek matniga krill harflarni aralashtirib yuboradi (masalan "qidirади")."""
+        o'zbek matniga krill harflarni aralashtirib yuboradi (masalan "qidirади").
+        Shuningdek markdown-escape qilingan hashtaglarni (\\#) tozalaydi."""
         result = await super()._call_llm(*args, **kwargs)
-        return to_latin_uz(result)
+        return to_latin_uz(result).replace("\\#", "#")
 
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
         """RSS feeddan yangiliklar oladi."""
@@ -393,6 +426,56 @@ Oxiridagi "—" va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchal
             temperature=0.6,
             max_tokens=800,
         )
+
+    async def generate_practical_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
+        """Amaliy qo'llanma posti — o'quvchi darhol qo'llay oladigan qadamlar."""
+        prompt = f"""Sen AI vositalaridan kundalik ishda foydalanadigan amaliyotchi mutaxassissan. Telegram kanalga quyidagi mavzuda AMALIY QO'LLANMA posti yoz — o'quvchi o'qib bo'lgach darhol o'zi qilib ko'ra olsin.
+
+Mavzu: {topic}
+
+{style_instruction(style)}
+
+Tuzilish:
+- Sarlavha: emoji + **qalin** — natijani va'da qilsin ("... 5 daqiqada", "... 3 qadamda").
+- Kirish 1-2 gap: bu nima uchun kerak, qanday muammoni yechadi.
+- 3-5 ta RAQAMLANGAN qadam. Har qadamda ANIQ amal — kerak bo'lsa aynan yozadigan prompt namunasini _kursiv_ da ber.
+- Yakun: kichik pro-maslahat yoki ogohlantirish + "sinab ko'ring va natijani yozing" CTA.
+
+Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — faqat qilinadigan ishlar. Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
+        return await self._call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7, max_tokens=800,
+        )
+
+    async def generate_tool_review_post(self, tool: str, style: str = DEFAULT_STYLE) -> str:
+        """AI vosita sharhi — halol, amaliy review."""
+        prompt = f"""Sen AI vositalarini har kuni ishlatib ko'radigan, halol fikr bildiradigan sharhlovchisan. Telegram kanalga quyidagi vosita haqida SHARH posti yoz.
+
+Vosita: {tool}
+
+{style_instruction(style)}
+
+Tuzilish:
+- Sarlavha: emoji + **vosita nomi** + bir gapda nima qilishi.
+- Nima qiladi — 2-3 gap, oddiy tilda, real foydalanish stsenariysi bilan.
+- ✅ Kuchli tomonlari — 2-3 punkt (aniq, "yaxshi" degan umumiy so'zsiz).
+- ⚠️ Kamchiliklari — 1-2 punkt (halol bo'l: narx, til qo'llab-quvvatlash, cheklovlar).
+- Kimga mos: 1 gap. Narxi: bepul/pullik holati (aniq bilmasang "bepul rejasi bor" kabi ehtiyotkor yoz, narx to'qima).
+- Yakun: o'z bahong (masalan "10 dan 8") + "siz ishlatib ko'rganmisiz?" CTA.
+
+Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima. Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
+        return await self._call_llm(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7, max_tokens=800,
+        )
+
+    def get_todays_practical_topic(self) -> str:
+        from datetime import date
+        return PRACTICAL_TOPICS[date.today().toordinal() % len(PRACTICAL_TOPICS)]
+
+    def get_todays_tool(self) -> str:
+        from datetime import date
+        return AI_TOOLS[date.today().toordinal() % len(AI_TOOLS)]
 
     def get_todays_topic(self) -> str:
         """Bugungi sanaga qarab ta'limiy mavzu tanlaydi (rotatsiya)."""

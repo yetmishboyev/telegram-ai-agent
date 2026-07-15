@@ -32,6 +32,8 @@ FAQ_BUTTONS = [
 NEWPOST_TYPE_BUTTONS = [
     [Button.inline("🎓 Ta'limiy", b"newpost:type:educational"),
      Button.inline("🌐 Yangilik", b"newpost:type:news")],
+    [Button.inline("🛠 Amaliy qo'llanma", b"newpost:type:practical"),
+     Button.inline("🧰 Vosita sharhi", b"newpost:type:tool")],
     [Button.inline("✍️ Erkin mavzu", b"newpost:type:free")],
     [Button.inline("❓ Quiz", b"newpost:type:quiz"),
      Button.inline("📊 So'rovnoma", b"newpost:type:poll")],
