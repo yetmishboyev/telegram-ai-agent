@@ -115,3 +115,116 @@ async def trigger_channel_post(
     else:
         asyncio.create_task(channel_poster.post_news())
     return {"ok": True, "type": post_type}
+
+
+@router.get("/timeline")
+async def get_channel_timeline(
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Kunlik postlar soni va ko'rishlar yig'indisi — grafik uchun seriya."""
+    from datetime import timedelta
+
+    days = max(1, min(days, 180))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    result = await db.execute(
+        select(
+            func.date(ChannelPost.sent_at).label("day"),
+            func.count(ChannelPost.id).label("posts"),
+            func.sum(ChannelPost.views).label("views"),
+        )
+        .where(ChannelPost.sent_at >= since)
+        .group_by(func.date(ChannelPost.sent_at))
+        .order_by(func.date(ChannelPost.sent_at))
+    )
+    rows = {str(r.day): {"posts": r.posts, "views": int(r.views or 0)} for r in result}
+
+    # Bo'sh kunlarni 0 bilan to'ldiramiz — grafikda uzluksiz o'q uchun
+    series = []
+    today = datetime.now(timezone.utc).date()
+    for i in range(days - 1, -1, -1):
+        d = str(today - timedelta(days=i))
+        item = rows.get(d, {"posts": 0, "views": 0})
+        series.append({"date": d, "posts": item["posts"], "views": item["views"]})
+    return {"days": days, "series": series}
+
+
+@router.get("/type-performance")
+async def get_type_performance(
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Post turlari bo'yicha o'rtacha/jami ko'rishlar — solishtirish grafigi uchun."""
+    result = await db.execute(
+        select(
+            ChannelPost.post_type,
+            func.count(ChannelPost.id).label("posts"),
+            func.avg(ChannelPost.views).label("avg_views"),
+            func.sum(ChannelPost.views).label("total_views"),
+        )
+        .group_by(ChannelPost.post_type)
+        .order_by(desc(func.avg(ChannelPost.views)))
+    )
+    return [
+        {
+            "post_type": r.post_type,
+            "posts": r.posts,
+            "avg_views": round(float(r.avg_views or 0), 1),
+            "total_views": int(r.total_views or 0),
+        }
+        for r in result
+    ]
+
+
+STRATEGY_CACHE_KEY = "channel_strategy"
+STRATEGY_TTL = 86400  # 24 soat
+
+
+async def _collect_strategy_stats(db: AsyncSession) -> dict:
+    """Strategiya uchun ixcham statistika to'plami."""
+    stats = await get_channel_stats(db=db, _=None)  # type: ignore[arg-type]
+    perf = await get_type_performance(db=db, _=None)  # type: ignore[arg-type]
+    tl = await get_channel_timeline(days=30, db=db, _=None)  # type: ignore[arg-type]
+    recent_days = [d for d in tl["series"] if d["posts"] > 0][-14:]
+    return {
+        "umumiy": {k: v for k, v in stats.items() if k != "best_post"},
+        "eng_yaxshi_post": stats.get("best_post"),
+        "tur_boyicha": perf,
+        "oxirgi_faol_kunlar": recent_days,
+    }
+
+
+@router.get("/strategy")
+async def get_growth_strategy(
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """AI o'sish strategiyasi — 24 soat keshlanadi."""
+    import json as _json
+    from app.database.redis import get_redis
+
+    r = await get_redis()
+    cached = await r.get(STRATEGY_CACHE_KEY)
+    if cached:
+        return {"cached": True, **_json.loads(cached)}
+
+    from app.services.news_fetcher import news_fetcher
+    stats = await _collect_strategy_stats(db)
+    strategy = await news_fetcher.generate_growth_strategy(stats)
+    if not strategy:
+        return {"cached": False, "holat": None}
+
+    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), **strategy}
+    await r.setex(STRATEGY_CACHE_KEY, STRATEGY_TTL, _json.dumps(payload, ensure_ascii=False))
+    return {"cached": False, **payload}
+
+
+@router.post("/strategy/refresh")
+async def refresh_growth_strategy(_: AdminUser = Depends(get_current_admin)):
+    """Keshni tozalaydi — keyingi GET yangi strategiya generatsiya qiladi."""
+    from app.database.redis import get_redis
+    r = await get_redis()
+    await r.delete(STRATEGY_CACHE_KEY)
+    return {"ok": True}

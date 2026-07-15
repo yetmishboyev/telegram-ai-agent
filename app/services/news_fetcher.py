@@ -1,4 +1,5 @@
 import httpx
+import json
 import xml.etree.ElementTree as ET
 from loguru import logger
 
@@ -225,6 +226,48 @@ Talablar:
             temperature=0.5,
             max_tokens=800,
         )
+
+    async def generate_growth_strategy(self, stats: dict) -> dict | None:
+        """Kanal statistikasi asosida o'sish strategiyasi tuzadi (dashboard uchun).
+
+        Returns: {holat, tavsiyalar[], kontent_goyalar[], keyingi_qadam} yoki None.
+        """
+        from app.ai.agents.json_parse import parse_json_response
+
+        prompt = f"""Sen Telegram kanallarini o'stirish bo'yicha tajribali SMM strategisan. Quyida "@Yetmishboyev_Sh" (sun'iy intellekt mavzusidagi o'zbek tilidagi kanal) statistikasi berilgan. Uni tahlil qilib, obunachilarni ko'paytirish strategiyasini tuz.
+
+Statistika (JSON):
+{json.dumps(stats, ensure_ascii=False, default=str)}
+
+Faqat JSON qaytar:
+{{
+  "holat": "kanalning hozirgi holati haqida 2-3 gaplik xolis tahlil",
+  "tavsiyalar": ["aniq, bajarsa bo'ladigan tavsiya (4-6 ta)", "..."],
+  "kontent_goyalar": ["keyingi hafta uchun aniq post g'oyasi (4-5 ta, mavzu + format)", "..."],
+  "keyingi_qadam": "eng birinchi qilinishi kerak bo'lgan BITTA amal"
+}}
+
+Qoidalar: umumiy gap emas, shu statistikaga bog'langan aniq tavsiyalar ber (masalan qaysi post turi yaxshi ishlayapti — o'shani ko'paytirish, qaysi vaqt/format sinash kerak). Har bir tavsiya/g'oya 1-2 gapdan oshmasin. O'zbek LOTIN alifbosida. Faqat JSON, izohsiz."""
+
+        try:
+            raw = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                # 900 yetmasdi — o'zbekcha to'liq strategiya kesilib, JSON buzilardi
+                temperature=0.5, max_tokens=2000,
+            )
+            data = parse_json_response(raw)
+        except Exception as e:
+            logger.error(f"Strategiya generatsiyada xato: {e}")
+            return None
+
+        if not isinstance(data, dict) or not data.get("holat"):
+            return None
+        return {
+            "holat": str(data.get("holat", ""))[:600],
+            "tavsiyalar": [str(t)[:300] for t in (data.get("tavsiyalar") or [])][:6],
+            "kontent_goyalar": [str(g)[:300] for g in (data.get("kontent_goyalar") or [])][:5],
+            "keyingi_qadam": str(data.get("keyingi_qadam", ""))[:300],
+        }
 
     async def generate_quiz(self, topic: str, kind: str = "quiz") -> dict | None:
         """Interaktiv quiz (to'g'ri javobli) yoki so'rovnoma (fikr) generatsiya qiladi.
