@@ -469,6 +469,46 @@ Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima. Oxiriga 3-4 hashta
             temperature=0.7, max_tokens=800,
         )
 
+    async def critique_and_improve(self, text: str, post_kind: str = "") -> str:
+        """Yozilgan postni professional muharrir ko'zi bilan tanqid qilib qayta yozadi.
+
+        Qoralama → tahrir jarayoni: hook, bitta g'oya, suvsizlik, CTA, format.
+        Xato bo'lsa original qaytadi — sifat qatlami hech qachon postni buzmasligi kerak.
+        """
+        prompt = f"""Sen Telegram kanallari uchun postlarni tahrir qiladigan tajribali bosh muharrirsan. Quyida qoralama post berilgan{' (turi: ' + post_kind + ')' if post_kind else ''}. Uni quyidagi mezonlar bo'yicha ichingda baholab, YAKUNIY tahrirlangan versiyasini yoz:
+
+1. HOOK — birinchi 1-2 gap o'quvchini to'xtatadimi? Zaif bo'lsa kuchaytir.
+2. BITTA G'OYA — post bitta aniq fikrga qurilganmi? Chetga chiqishlarni ol.
+3. SUV — takror, umumiy gap, keraksiz kirish so'zlarni qisqart. Har gap qiymat bersin.
+4. OQIM — gaplar tabiiy ulanadimi, o'zbek tili grammatikasi toza va ravonmi?
+5. CTA — yakunda o'quvchini harakatga undaydigan tabiiy chaqiruv bormi?
+6. FORMAT — Telegram Markdown (**qalin**, _kursiv_) to'g'ri ishlatilganmi, emoji me'yoridami?
+
+Qat'iy qoidalar:
+- Postning mazmuni, faktlari va uslubini (ohangini) SAQLA — sen tahrirchisan, qayta muallif emas.
+- Yangi fakt, raqam yoki va'da QO'SHMA.
+- Uzunlikni sezilarli oshirma (±15% chegarada qol).
+- Hashtaglarni saqla. FAQAT o'zbek LOTIN alifbosida.
+- FAQAT yakuniy post matnini qaytar — baho, izoh, sarlavha yozma.
+
+Qoralama post:
+{text}"""
+        try:
+            improved = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=1200,
+            )
+            improved = improved.strip()
+            # Muharrir bo'sh yoki keskin qisqartirilgan natija bersa — originalga qaytamiz
+            if not improved or len(improved) < len(text) * 0.5:
+                logger.warning("Critique natijasi shubhali qisqa — original qoldirildi")
+                return text
+            return improved
+        except Exception as e:
+            logger.warning(f"Critique xatosi — original qoldirildi: {e}")
+            return text
+
     def get_todays_practical_topic(self) -> str:
         from datetime import date
         return PRACTICAL_TOPICS[date.today().toordinal() % len(PRACTICAL_TOPICS)]
