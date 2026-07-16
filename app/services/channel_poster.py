@@ -73,6 +73,11 @@ class ChannelPoster:
             logger.warning("Bot client tayyor emas — post egaga yuborib bo'lmadi")
             return
 
+        # Sifat qatlami: muharrir-tanqid o'tkazib yakuniy versiyani olamiz
+        # (xato bo'lsa critique_and_improve originalni qaytaradi).
+        from app.services.news_fetcher import news_fetcher
+        text = await news_fetcher.critique_and_improve(text, post_type)
+
         post_id = str(uuid.uuid4())[:8]
         text_with_footer = _md_to_html(text.rstrip()) + CHANNEL_FOOTER_HTML
 
