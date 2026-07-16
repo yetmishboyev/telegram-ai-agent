@@ -153,7 +153,8 @@ class ChannelPoster:
 
         post_type = data["post_type"]
         old_topic = data.get("topic", "")
-        style = data.get("style") or "chapani"
+        from app.services.news_fetcher import DEFAULT_STYLE
+        style = data.get("style") or DEFAULT_STYLE
 
         if post_type == "educational":
             # Eski mavzudan farqli yangi mavzu tanlaymiz

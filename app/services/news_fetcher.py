@@ -95,6 +95,19 @@ AI_TOOLS = [
 
 # Post uslublari — ega har post uchun tanlaydi (bot menyusidan).
 POST_STYLES: dict[str, dict] = {
+    "jonli": {
+        "label": "💬 Jonli-professional",
+        "instruction": (
+            "USLUB — JONLI-PROFESSIONAL: qiziqarli, ammo vazmin va professional ohangda "
+            "yoz. O'quvchiga faqat \"siz\" deb murojaat qil. Boshlanish o'quvchini "
+            "qiziqtirsin (savol, kutilmagan fakt yoki hayotiy holat), lekin shov-shuv va "
+            "keskin da'volardan qoch. Hazil va ko'cha tilini ishlatma — iliq, ishonchli, "
+            "adabiy o'zbek tili. Fikrlar aniq, gaplar ravon; qisqa va o'rtacha gaplarni "
+            "navbatlashtir. Undov belgisini kamdan-kam ishlat. Emoji juda me'yorida "
+            "(post boshida va ehtimol bo'limlarda 1-2 ta). Yakunda o'quvchini mulohazaga "
+            "undaydigan bosiq savol yoki taklif bilan tugat."
+        ),
+    },
     "chapani": {
         "label": "🔥 Chapani",
         "instruction": (
@@ -120,7 +133,9 @@ POST_STYLES: dict[str, dict] = {
         ),
     },
 }
-DEFAULT_STYLE = "chapani"
+# Egaga chapani juda topvaroq tuyuldi (2026-07-16) — jadval postlari endi
+# jonli-professional uslubda chiqadi; chapani menyuda tanlov sifatida qoladi.
+DEFAULT_STYLE = "jonli"
 
 
 _LATIN_RULE = (

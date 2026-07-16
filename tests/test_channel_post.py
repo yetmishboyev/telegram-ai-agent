@@ -12,10 +12,17 @@ from app.utils.uz_text import to_latin_uz
 def test_style_instruction_known_and_default():
     assert "CHAPANI" in style_instruction("chapani")
     assert "QISQA" in style_instruction("qisqa")
+    assert "JONLI-PROFESSIONAL" in style_instruction("jonli")
     # noma'lum uslub → default (lotin qoidasi qo'shilgan holda)
     assert style_instruction("yoq-bunday").startswith(POST_STYLES[DEFAULT_STYLE]["instruction"])
     # har bir uslubga lotin-only qoidasi qo'shiladi
     assert "LOTIN" in style_instruction("chapani")
+
+
+def test_default_style_is_jonli_professional():
+    # Ega chapani juda topvaroq deb topdi — jadval postlari jonli-professional
+    assert DEFAULT_STYLE == "jonli"
+    assert '"siz"' in POST_STYLES["jonli"]["instruction"]
 
 
 def test_to_latin_uz_fixes_mixed_script():
