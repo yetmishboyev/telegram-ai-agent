@@ -231,6 +231,19 @@ async def get_subscriber_series(
     }
 
 
+@router.post("/learn-style")
+async def learn_style(
+    channel: str,
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Berilgan kanaldan yozish uslubini o'rganadi (30-60s)."""
+    from app.services.channel_poster import channel_poster
+    result = await channel_poster.learn_style_from_channel(channel)
+    if not result:
+        return {"ok": False, "message": "O'rganib bo'lmadi — kanal ochiq va matnli postlarga boymi?"}
+    return {"ok": True, **result}
+
+
 @router.post("/subscribers/snapshot")
 async def trigger_subscriber_snapshot(_: AdminUser = Depends(get_current_admin)):
     """Obunachi sonini hozir olish (qo'lda)."""

@@ -37,6 +37,7 @@ NEWPOST_TYPE_BUTTONS = [
     [Button.inline("✍️ Erkin mavzu", b"newpost:type:free")],
     [Button.inline("❓ Quiz", b"newpost:type:quiz"),
      Button.inline("📊 So'rovnoma", b"newpost:type:poll")],
+    [Button.inline("🎯 Uslub o'rgatish", b"newpost:learnstyle")],
     [Button.inline("🔙 Menyu", b"menu")],
 ]
 
@@ -140,8 +141,19 @@ class BotService:
             await self._client.send_message(
                 event.chat_id,
                 f"✍️ Mavzu: {text}\n\n🎨 Uslubni tanlang:",
-                buttons=self._style_buttons("newpost:genfree"),
+                buttons=await self._style_buttons("newpost:genfree"),
             )
+            return
+
+        if step == "learn_style":
+            await self._set_state(None)
+            await self._client.send_message(
+                event.chat_id,
+                f"🔍 {text} kanali o'rganilmoqda — postlarni o'qib, uslubni tahlil qilaman "
+                "(30-60 soniya)...",
+            )
+            import asyncio as _aio
+            _aio.create_task(self._learn_style_and_report(event.chat_id, text))
             return
 
         if step == "quiz_topic":
@@ -289,6 +301,14 @@ class BotService:
         elif data == "newpost:menu":
             await event.edit("📢 Qanday post yaratamiz?", buttons=NEWPOST_TYPE_BUTTONS)
 
+        elif data == "newpost:learnstyle":
+            await self._set_state({"step": "learn_style"})
+            await event.edit(
+                "🎯 Qaysi kanalning yozish uslubini o'rganay?\n\n"
+                "Kanal linkini yoki @username ni yuboring (ochiq kanal bo'lsin):",
+                buttons=CANCEL_ROW,
+            )
+
         elif data.startswith("newpost:type:"):
             ptype = data.split(":")[2]
             if ptype == "free":
@@ -308,7 +328,7 @@ class BotService:
                 )
             else:
                 await event.edit(
-                    "🎨 Uslubni tanlang:", buttons=self._style_buttons(f"newpost:gen:{ptype}")
+                    "🎨 Uslubni tanlang:", buttons=await self._style_buttons(f"newpost:gen:{ptype}")
                 )
 
         elif data.startswith("approve_poll:"):
@@ -538,16 +558,46 @@ class BotService:
 
     # ─── kanal posti yaratish ───────────────────────────────────────────────────
 
-    @staticmethod
-    def _style_buttons(action_prefix: str) -> list:
+    async def _style_buttons(self, action_prefix: str) -> list:
         """Uslub tanlash tugmalari. action_prefix — masalan 'newpost:gen:educational'
         yoki 'newpost:genfree'; oxiriga :{style} qo'shiladi."""
-        from app.services.news_fetcher import POST_STYLES
+        from app.services.news_fetcher import POST_STYLES, news_fetcher
         rows = []
+        # O'rganilgan uslub mavjud bo'lsa — birinchi (tavsiya) o'rinda
+        learned = await news_fetcher.get_learned_style()
+        if learned:
+            src = learned.get("source", "")
+            rows.append([Button.inline(f"🎯 O'rganilgan ({src})", f"{action_prefix}:learned".encode())])
         for key, meta in POST_STYLES.items():
             rows.append([Button.inline(meta["label"], f"{action_prefix}:{key}".encode())])
         rows.append([Button.inline("❌ Bekor qilish", b"cancel")])
         return rows
+
+    async def _learn_style_and_report(self, chat_id, channel: str) -> None:
+        """Uslubni o'rganib, natijani egaga hisobot qiladi (fon vazifasi)."""
+        try:
+            from app.services.channel_poster import channel_poster
+            result = await channel_poster.learn_style_from_channel(channel)
+        except Exception as e:
+            logger.error(f"Uslub o'rganishda xato: {e}")
+            result = None
+
+        if not result:
+            await self._client.send_message(
+                chat_id,
+                "❌ O'rganib bo'lmadi. Kanal ochiqligini va kamida 5 ta matnli "
+                "post borligini tekshirib, qayta urinib ko'ring.",
+            )
+            return
+
+        card_preview = result["style_card"][:600]
+        await self._client.send_message(
+            chat_id,
+            f"✅ {result['source']} uslubi o'rganildi!\n\n"
+            f"📋 Uslub kartasi (qisqacha):\n{card_preview}...\n\n"
+            f"Endi post yaratishda \"🎯 O'rganilgan\" uslubini tanlang.",
+            buttons=[[Button.inline("📢 Post yaratish", b"newpost:menu")]],
+        )
 
     async def _approve_poll(self, event, poll_id: str) -> None:
         """Tasdiqlangan quiz/so'rovnomani kanalga native poll sifatida yuboradi."""

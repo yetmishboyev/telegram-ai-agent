@@ -120,15 +120,98 @@ def style_instruction(style: str) -> str:
 
 class NewsFetcher(BaseAgent):
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Namuna kanaldan o'rganilgan uslub (AgentConfig'dan lazy yuklanadi)
+        self._learned_style: dict | None = None
+
     async def run(self, *args, **kwargs):
         pass
+
+    # ─── o'rganilgan uslub ─────────────────────────────────────────────────────
+
+    def set_learned_style_cache(self, data: dict | None) -> None:
+        self._learned_style = data
+
+    async def get_learned_style(self) -> dict | None:
+        """O'rganilgan uslubni keshdan yoki DB (AgentConfig) dan oladi."""
+        if self._learned_style is not None:
+            return self._learned_style
+        try:
+            from sqlalchemy import select
+            from app.database.session import AsyncSessionLocal
+            from app.database.models import AgentConfig
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(
+                    select(AgentConfig).where(AgentConfig.key == "learned_style")
+                )
+                cfg = r.scalar_one_or_none()
+            if cfg:
+                self._learned_style = json.loads(cfg.value)
+        except Exception as e:
+            logger.warning(f"O'rganilgan uslubni o'qishda xato: {e}")
+        return self._learned_style
+
+    async def analyze_style(self, posts_text: str) -> str | None:
+        """Namuna postlardan uslub kartasini (yozish instruktsiyasini) chiqaradi."""
+        prompt = f"""Sen matn uslubini tahlil qiluvchi mutaxassissan. Quyida bitta Telegram kanalning postlari berilgan (---POST--- bilan ajratilgan). Ularning YOZISH USLUBINI tahlil qilib, boshqa muallif shu uslubda yoza olishi uchun ANIQ instruktsiya (uslub kartasi) yoz.
+
+Qamrab ol:
+- Ohang va munosabat (rasmiy/samimiy, o'quvchiga murojaat shakli — sen/siz)
+- Post qanday OCHILADI (hook turi) va qanday YOPILADI (CTA bormi, qanaqa)
+- Tuzilish: xatboshi uzunligi, ro'yxat/raqamlash ishlatilishi, ajratish belgilari
+- Gap uslubi: uzun/qisqa, savollar, undovlar
+- Emoji: qanchalik ko'p, qayerda
+- Formatlash: qalin/kursiv nimalar uchun
+- O'ziga xos iboralar, takrorlanadigan elementlar
+
+Instruktsiya 150-250 so'z, buyruq ohangida ("...yoz", "...ishlat") bo'lsin. Faqat instruktsiyani qaytar.
+
+Postlar:
+{posts_text[:9000]}"""
+        try:
+            result = await self._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3, max_tokens=800,
+            )
+            return result.strip() or None
+        except Exception as e:
+            logger.error(f"Uslub tahlilida xato: {e}")
+            return None
+
+    async def _style_text(self, style: str) -> str:
+        """Generatorlar uchun uslub instruktsiyasi — 'learned' dinamik, qolganlari statik."""
+        if style == "learned":
+            data = await self.get_learned_style()
+            if data:
+                samples = "\n\n---NAMUNA---\n\n".join(s[:700] for s in data.get("samples", [])[:2])
+                return (
+                    f"USLUB — O'RGANILGAN ({data.get('source', '')} kanalidan):\n"
+                    f"{data['style_card']}\n\n"
+                    f"Quyidagi namunalar USLUB uchun (mazmunini KO'CHIRMA, faqat ohang/tuzilishga ergash). "
+                    f"Namuna kanalning nomi, @username yoki imzosini postga HECH QACHON qo'shma:\n"
+                    f"{samples}" + _LATIN_RULE
+                )
+            logger.warning("O'rganilgan uslub topilmadi — standart uslub ishlatiladi")
+        return style_instruction(style)
 
     async def _call_llm(self, *args, **kwargs) -> str:
         """Post generatsiyasi natijasini lotinlashtiradi — LLM ba'zan lotincha
         o'zbek matniga krill harflarni aralashtirib yuboradi (masalan "qidirади").
-        Shuningdek markdown-escape qilingan hashtaglarni (\\#) tozalaydi."""
+        Shuningdek markdown-escape qilingan hashtaglarni (\\#) va (uslub o'rganilgan
+        bo'lsa) namuna kanalning imzosini deterministik tozalaydi — prompt qoidasi
+        yetarli emas, model manba nomini ko'rib postga qo'shib yuborishi mumkin."""
+        import re as _re
         result = await super()._call_llm(*args, **kwargs)
-        return to_latin_uz(result).replace("\\#", "#")
+        result = to_latin_uz(result).replace("\\#", "#")
+        source = (self._learned_style or {}).get("source")
+        if source and source.lower() in result.lower():
+            # imzo qatori bo'lsa qatorni, matn ichida bo'lsa faqat mention'ni olamiz
+            result = _re.sub(rf"^\W*{_re.escape(source)}\W*$", "", result,
+                             flags=_re.IGNORECASE | _re.MULTILINE)
+            result = _re.sub(_re.escape(source), "", result, flags=_re.IGNORECASE)
+            result = _re.sub(r"\n{3,}", "\n\n", result).strip()
+        return result
 
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
         """RSS feeddan yangiliklar oladi."""
@@ -179,12 +262,13 @@ class NewsFetcher(BaseAgent):
 
     async def generate_educational_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi."""
+        style_text = await self._style_text(style)
         prompt = f"""
 Sen sun'iy intellekt sohasida 8-10 yillik tajribaga ega, o'z auditoriyasiga ega bo'lgan ekspert-muallifsan. Telegram kanalingga quyidagi mavzu bo'yicha post yozasan.
 
 Mavzu: {topic}
 
-{style_instruction(style)}
+{style_text}
 
 Talablar:
 - Jonli inson yozgandek yoz — quruq, shablon yoki "AI yozgan" his qildiradigan ohangdan qoch. Xuddi tanishingga tushuntirayotgandek, samimiy va qiziqarli tarzda yoz.
@@ -261,6 +345,7 @@ Faqat JSON qaytar: {{"index": <raqam>, "reason": "nega aynan shu — 1 gap"}}"""
         → bizga nima anglatadi → xulosa/CTA.
         """
         reason_line = f"\nMuharrir izohi (nega tanlangan): {curation_reason}" if curation_reason else ""
+        style_text = await self._style_text(style)
         prompt = f"""Sen sun'iy intellekt sohasini chuqur biladigan, o'z auditoriyasiga ega tahlilchi-muallifsan. Quyidagi BITTA yangilik asosida Telegram kanalga o'zbek tilida CHUQUR TAHLILIY post yoz.
 
 Yangilik (inglizcha manba):
@@ -268,7 +353,7 @@ Sarlavha: {item.get('title', '')}
 Tavsif: {item.get('desc', '')}
 Havola: {item.get('link', '')}{reason_line}
 
-{style_instruction(style)}
+{style_text}
 
 Post tuzilishi (sarlavhalarni yozma, tabiiy oqim bo'lsin):
 1. HOOK — birinchi 1-2 gap o'quvchini to'xtatsin (savol, kutilmagan fakt yoki natija).
@@ -380,12 +465,13 @@ Qoidalar: 2-4 variant; fikr/tanlov so'rovi (to'g'ri javob yo'q); hammasi o'zbek 
 
     async def generate_free_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Ega bergan erkin mavzu/topshiriq bo'yicha post yozadi."""
+        style_text = await self._style_text(style)
         prompt = f"""
 Sen o'z auditoriyasiga ega, tajribali Telegram kanal muallifisan. Quyidagi mavzu/topshiriq bo'yicha kanalingga o'zbek tilida post yoz.
 
 Mavzu / topshiriq: {topic}
 
-{style_instruction(style)}
+{style_text}
 
 Talablar:
 - To'g'ri adabiy o'zbek tilida, grammatikaga e'tibor berib yoz.
@@ -429,11 +515,12 @@ Oxiridagi "—" va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchal
 
     async def generate_practical_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Amaliy qo'llanma posti — o'quvchi darhol qo'llay oladigan qadamlar."""
+        style_text = await self._style_text(style)
         prompt = f"""Sen AI vositalaridan kundalik ishda foydalanadigan amaliyotchi mutaxassissan. Telegram kanalga quyidagi mavzuda AMALIY QO'LLANMA posti yoz — o'quvchi o'qib bo'lgach darhol o'zi qilib ko'ra olsin.
 
 Mavzu: {topic}
 
-{style_instruction(style)}
+{style_text}
 
 Tuzilish:
 - Sarlavha: emoji + **qalin** — natijani va'da qilsin ("... 5 daqiqada", "... 3 qadamda").
@@ -449,11 +536,12 @@ Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — faqat qilina
 
     async def generate_tool_review_post(self, tool: str, style: str = DEFAULT_STYLE) -> str:
         """AI vosita sharhi — halol, amaliy review."""
+        style_text = await self._style_text(style)
         prompt = f"""Sen AI vositalarini har kuni ishlatib ko'radigan, halol fikr bildiradigan sharhlovchisan. Telegram kanalga quyidagi vosita haqida SHARH posti yoz.
 
 Vosita: {tool}
 
-{style_instruction(style)}
+{style_text}
 
 Tuzilish:
 - Sarlavha: emoji + **vosita nomi** + bir gapda nima qilishi.
