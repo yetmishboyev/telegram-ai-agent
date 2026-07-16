@@ -125,6 +125,9 @@ async def trigger_channel_post(
         asyncio.create_task(channel_poster.post_educational())
     elif post_type == "digest":
         asyncio.create_task(channel_poster.post_weekly_digest())
+    elif post_type == "calendar":
+        # Bugungi taqvim formatini hozir ishga tushirish (09:00 ni kutmasdan)
+        asyncio.create_task(channel_poster.post_by_calendar())
     else:
         asyncio.create_task(channel_poster.post_news())
     return {"ok": True, "type": post_type}
