@@ -7,14 +7,29 @@ from app.ai.agents.base_agent import BaseAgent
 from app.utils.uz_text import to_latin_uz
 
 
-# Sun'iy intellektga oid RSS manbalar — turli xil, mustaqil manbalar (bir xil
-# Google News so'rovlarining takrorlanishidan qochish uchun; roadmap Faza 3, band 10)
+# Sun'iy intellektga oid RSS manbalar — nufuzli, mustaqil saytlar.
+# Har biri jonli tekshirilgan (2026-07); ishlamay qolsa fetch_rss jimgina o'tkazadi.
 AI_NEWS_FEEDS = [
     "https://news.google.com/rss/search?q=artificial+intelligence+AI&hl=en-US&gl=US&ceid=US:en",
     "https://venturebeat.com/category/ai/feed/",
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://huggingface.co/blog/feed.xml",
+    "https://www.technologyreview.com/feed/",          # MIT Technology Review
+    "https://www.wired.com/feed/tag/ai/latest/rss",    # Wired AI
+    "https://feeds.arstechnica.com/arstechnica/index", # Ars Technica
+    "https://blog.google/technology/ai/rss/",          # Google AI Blog (birlamchi manba)
+    "https://the-decoder.com/feed/",                   # The Decoder (AI-fokus)
 ]
+
+# Mashhur AI/texnologiya Telegram kanallari — userbot o'qiydi (jonli tekshirilgan).
+NEWS_TG_CHANNELS = [
+    "@ai_newz",
+    "@seeallochnaya",
+    "@data_secrets",
+]
+
+# Faqat shu oynadagi yangiliklar "so'nggi" hisoblanadi
+NEWS_FRESHNESS_HOURS = 48
 
 # 09:00 dagi ta'limiy postlar uchun mavzular (rotatsiya)
 EDUCATIONAL_TOPICS = [
@@ -213,8 +228,23 @@ Postlar:
             result = _re.sub(r"\n{3,}", "\n\n", result).strip()
         return result
 
+    @staticmethod
+    def _is_fresh(pub_date: str, hours: int = NEWS_FRESHNESS_HOURS) -> bool:
+        """pubDate so'nggi `hours` ichidami. Parse bo'lmasa True (item tashlanmaydi)."""
+        if not pub_date:
+            return True
+        try:
+            from email.utils import parsedate_to_datetime
+            from datetime import datetime, timezone, timedelta
+            dt = parsedate_to_datetime(pub_date)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
+        except Exception:
+            return True
+
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
-        """RSS feeddan yangiliklar oladi."""
+        """RSS feeddan yangiliklar oladi (faqat so'nggi NEWS_FRESHNESS_HOURS ichidagilar)."""
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -229,26 +259,64 @@ Postlar:
             channel = root.find("channel")
             if channel is None:
                 return []
-            for item in channel.findall("item")[:limit]:
+            for item in channel.findall("item"):
+                if len(items) >= limit:
+                    break
                 title = item.findtext("title", "").strip()
                 link = item.findtext("link", "").strip()
                 desc = item.findtext("description", "").strip()
+                pub = item.findtext("pubDate", "").strip()
                 # HTML teglarini tozalash
                 import re
                 desc = re.sub(r"<[^>]+>", "", desc)[:300]
-                if title:
-                    items.append({"title": title, "link": link, "desc": desc})
+                if title and self._is_fresh(pub):
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc.removeprefix("www.").removeprefix("feeds.")
+                    items.append({"title": title, "link": link, "desc": desc, "source": domain})
         except Exception as e:
             logger.warning(f"RSS parse xatosi: {e}")
 
         return items
 
+    async def fetch_telegram_news(
+        self, hours: int = NEWS_FRESHNESS_HOURS, per_channel: int = 20
+    ) -> list[dict]:
+        """Mashhur AI Telegram kanallaridan so'nggi matnli postlarni oladi."""
+        from datetime import datetime, timezone, timedelta
+        from app.services.telegram_service import telegram_service
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        items: list[dict] = []
+        for ch in NEWS_TG_CHANNELS:
+            try:
+                msgs = await telegram_service._client.get_messages(ch, limit=per_channel)
+            except Exception as e:
+                logger.warning(f"TG yangilik manbasi o'qilmadi ({ch}): {e}")
+                continue
+            for m in msgs:
+                if not (m and m.text and len(m.text) > 150 and m.date and m.date > cutoff):
+                    continue
+                first_line = m.text.strip().split("\n")[0][:120].strip("*_#")
+                items.append({
+                    "title": first_line,
+                    "desc": m.text[len(first_line):500].strip(),
+                    "link": f"https://t.me/{ch.lstrip('@')}/{m.id}",
+                    "source": ch,
+                })
+        logger.debug(f"TG yangiliklari: {len(items)} ta ({len(NEWS_TG_CHANNELS)} kanaldan)")
+        return items
+
     async def get_ai_news(self, count: int = 3) -> list[dict]:
-        """Barcha manbalardan yangilik yig'ib, eng dolzarblarini qaytaradi."""
+        """RSS saytlar + Telegram kanallardan yangilik yig'ib, dedup qilib qaytaradi."""
         all_items: list[dict] = []
         for feed_url in AI_NEWS_FEEDS:
-            items = await self.fetch_rss(feed_url, limit=8)
+            items = await self.fetch_rss(feed_url, limit=6)
             all_items.extend(items)
+
+        try:
+            all_items.extend(await self.fetch_telegram_news())
+        except Exception as e:
+            logger.warning(f"TG yangiliklarini olishda xato: {e}")
 
         # Takrorlanganlarni olib tashlash (sarlavha bo'yicha)
         seen, unique = set(), []
@@ -258,7 +326,19 @@ Postlar:
                 seen.add(key)
                 unique.append(item)
 
-        return unique[:count]
+        # Manbalar bo'yicha round-robin — aks holda ro'yxat boshidagi feedlar
+        # count'ni to'ldirib, keyingi manbalar (jumladan TG kanallar) kesilib qoladi.
+        by_source: dict[str, list[dict]] = {}
+        for item in unique:
+            by_source.setdefault(item.get("source", "?"), []).append(item)
+        interleaved: list[dict] = []
+        while len(interleaved) < count and any(by_source.values()):
+            for src in list(by_source.keys()):
+                if by_source[src]:
+                    interleaved.append(by_source[src].pop(0))
+                    if len(interleaved) >= count:
+                        break
+        return interleaved
 
     async def generate_educational_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
         """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi."""
@@ -311,7 +391,7 @@ Talablar:
             return {"item": items[0], "reason": ""}
 
         listing = "\n".join(
-            f"{i}. {it['title']}\n   {it.get('desc', '')[:150]}"
+            f"{i}. [{it.get('source', 'sayt')}] {it['title']}\n   {it.get('desc', '')[:150]}"
             for i, it in enumerate(items)
         )
         prompt = f"""Sen sun'iy intellekt mavzusidagi o'zbek Telegram kanalining bosh muharririsan. Auditoriya: texnologiyaga qiziquvchi oddiy foydalanuvchilar va IT mutaxassislar.
@@ -618,20 +698,13 @@ Qoralama post:
         return random.choice(candidates)
 
     async def get_ai_news_shuffled(self, count: int = 3) -> list[dict]:
-        """Yangiliklar ro'yxatini tasodifiy tartibda qaytaradi (boshqa post uchun)."""
+        """Yangiliklar ro'yxatini tasodifiy tartibda qaytaradi (boshqa post uchun).
+
+        get_ai_news bilan bir xil birlashgan manbadan (RSS + Telegram) keng
+        ro'yxat olib aralashtiradi — curation boshqa yangilikni tanlaydi.
+        """
         import random
-        all_items: list[dict] = []
-        for feed_url in AI_NEWS_FEEDS:
-            items = await self.fetch_rss(feed_url, limit=12)
-            all_items.extend(items)
-
-        seen, unique = set(), []
-        for item in all_items:
-            key = item["title"][:60].lower()
-            if key not in seen:
-                seen.add(key)
-                unique.append(item)
-
+        unique = await self.get_ai_news(count=40)
         random.shuffle(unique)
         return unique[:count]
 
