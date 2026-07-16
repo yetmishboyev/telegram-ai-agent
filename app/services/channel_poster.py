@@ -458,6 +458,86 @@ class ChannelPoster:
         await r.delete(f"pending_poll:{poll_id}")
         await self.create_quiz_on_demand(old["kind"], old.get("topic", ""))
 
+    # ─── uslub o'rgatish (namuna kanaldan) ─────────────────────────────────────
+
+    async def learn_style_from_channel(self, channel: str) -> dict | None:
+        """Berilgan kanalning postlaridan yozish uslubini o'rganib saqlaydi.
+
+        Userbot orqali oxirgi postlarni oladi, LLM uslub kartasini chiqaradi,
+        eng yaxshi namunalar bilan birga AgentConfig'ga yozadi. Natija:
+        {source, style_card, samples_count} yoki None.
+        """
+        from app.services.telegram_service import telegram_service
+        from app.services.news_fetcher import news_fetcher
+
+        channel = channel.strip()
+        if channel.startswith("https://t.me/"):
+            channel = "@" + channel.split("t.me/")[1].split("/")[0]
+        if not channel.startswith("@"):
+            channel = "@" + channel
+
+        # 1. Postlarni yig'ish (matnli, yetarlicha uzun)
+        try:
+            messages = await telegram_service._client.get_messages(channel, limit=50)
+        except Exception as e:
+            logger.error(f"Uslub o'rganish: kanal o'qilmadi ({channel}): {e}")
+            return None
+
+        posts = [
+            {"text": m.text, "views": m.views or 0}
+            for m in messages
+            if m and m.text and len(m.text) >= 200
+        ]
+        if len(posts) < 5:
+            logger.warning(f"Uslub o'rganish: {channel} da yetarli matnli post yo'q ({len(posts)})")
+            return None
+
+        # Eng ko'p ko'rilgan 15 tasi tahlilga, top 3 namuna sifatida saqlanadi
+        posts.sort(key=lambda p: p["views"], reverse=True)
+        analysis_posts = posts[:15]
+        # Namunalardan kanal imzosi/username qatorlarini tozalaymiz — aks holda
+        # model ularni yangi postga ko'chirib qo'yadi (begona kanal reklamasi).
+        signature_re = re.compile(
+            r"^\s*(?:[@🔗📢▪️•➡️—-]\s*)*(?:@\w+|https?://t\.me/\S+)\s*$", re.MULTILINE
+        )
+        samples = [signature_re.sub("", p["text"][:1200]).strip() for p in posts[:3]]
+
+        # 2. LLM uslub kartasi
+        joined = "\n\n---POST---\n\n".join(p["text"][:800] for p in analysis_posts)
+        style_card = await news_fetcher.analyze_style(joined)
+        if not style_card:
+            return None
+
+        # 3. Saqlash (AgentConfig — doimiy, dashboard orqali ham ko'rinadi)
+        from datetime import datetime, timezone
+        from sqlalchemy import select
+        from app.database.session import AsyncSessionLocal
+        from app.database.models import AgentConfig
+
+        payload = json.dumps({
+            "source": channel,
+            "style_card": style_card,
+            "samples": samples,
+            "learned_at": datetime.now(timezone.utc).isoformat(),
+        }, ensure_ascii=False)
+
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(AgentConfig).where(AgentConfig.key == "learned_style"))
+            cfg = r.scalar_one_or_none()
+            if cfg:
+                cfg.value = payload
+            else:
+                db.add(AgentConfig(
+                    key="learned_style", value=payload,
+                    description="Namuna kanaldan o'rganilgan post uslubi",
+                ))
+            await db.commit()
+
+        # Keshni yangilaymiz — keyingi generatsiya darhol yangi uslubni ko'radi
+        news_fetcher.set_learned_style_cache(json.loads(payload))
+        logger.info(f"Uslub o'rganildi: {channel} ({len(analysis_posts)} post tahlil qilindi)")
+        return {"source": channel, "style_card": style_card, "samples_count": len(samples)}
+
     # ─── obunachi statistikasi ──────────────────────────────────────────────────
 
     async def snapshot_subscribers(self) -> int | None:
