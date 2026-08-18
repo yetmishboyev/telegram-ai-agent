@@ -118,6 +118,11 @@ class TelegramService:
                     text = f"{text}\n{img_part}" if text else img_part
                 elif not text:
                     text = self._media_label(msg_type)
+            elif msg_type == MessageType.DOCUMENT:
+                # Fayl nomi egaga yuboriladigan bildirishnomada ko'rinsin
+                # ("CV_Aliyev.pdf" — "📎 Fayl yuborildi" dan foydaliroq).
+                label = self._document_label(event.message)
+                text = f"{text}\n{label}" if text else label
             elif not text and event.message.media:
                 text = self._media_label(msg_type)
 
@@ -170,6 +175,17 @@ class TelegramService:
             except Exception as e:
                 await db.rollback()
                 logger.error(f"Batch qayta ishlashda xato: {e}", exc_info=True)
+
+    @staticmethod
+    def _document_label(message) -> str:
+        """Hujjat uchun fayl nomi bilan yorliq (nomi topilmasa umumiy yorliq)."""
+        from telethon.tl.types import DocumentAttributeFilename
+        doc = getattr(message, "document", None)
+        if doc is not None:
+            for attr in getattr(doc, "attributes", []) or []:
+                if isinstance(attr, DocumentAttributeFilename) and attr.file_name:
+                    return f"📎 Hujjat yuborildi: {attr.file_name}"
+        return "📎 Hujjat yuborildi"
 
     @staticmethod
     def _media_label(msg_type: MessageType) -> str:

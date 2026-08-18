@@ -58,6 +58,45 @@ def _luhn_valid(digits: str) -> bool:
         total += n
     return total % 10 == 0
 
+# Shaxsni tasdiqlovchi hujjat ma'lumotlari — ega odamlardan CV va obyektivka
+# so'raydi, shuning uchun bular "yubormang" deb rad etilmaydi: qabul qilinadi,
+# egaga bildirishnoma yuboriladi. Qolgan turlar (parol, karta, OTP...) sir
+# hisoblanadi va ular uchun ogohlantirish javobi qoladi.
+_IDENTITY_TYPES = {"passport", "jshshir"}
+
+_IDENTITY_ACK_REPLIES = {
+    "uz": (
+        "Ma'lumotlaringiz qabul qilindi va Shaxzodbek Yetmishboyevga yetkazildi. "
+        "Xavfsizlik uchun men ularni o'qimadim va saqlamadim — javobni "
+        "Shaxzodbekning o'zi beradi."
+    ),
+    "ru": (
+        "Ваши данные получены и переданы Шахзодбеку Йетмишбоеву. "
+        "В целях безопасности я их не читал и не сохранял — ответит он сам."
+    ),
+    "en": (
+        "Your details have been received and passed on to Shaxzodbek Yetmishboyev. "
+        "For security reasons I did not read or store them — he will reply himself."
+    ),
+}
+
+# Hujjat (CV, obyektivka va h.k.) — mazmuni o'qilmaydi, lekin e'tiborsiz ham
+# qolmaydi: foydalanuvchi tasdiq oladi, ega bildirishnoma oladi.
+_DOCUMENT_ACK_REPLIES = {
+    "uz": (
+        "Hujjatingiz qabul qilindi va Shaxzodbek Yetmishboyevga yetkazildi. "
+        "U ko'rib chiqib javob beradi."
+    ),
+    "ru": (
+        "Ваш документ получен и передан Шахзодбеку Йетмишбоеву. "
+        "Он ознакомится и ответит."
+    ),
+    "en": (
+        "Your document has been received and passed on to Shaxzodbek Yetmishboyev. "
+        "He will review it and reply."
+    ),
+}
+
 _SENSITIVE_REPLIES = {
     "uz": (
         "Bu xabar maxfiy ma'lumot (parol, karta raqami yoki shaxsiy hujjat) o'z ichiga olishi mumkin. "
@@ -129,8 +168,11 @@ class AIService:
         # 2b. Maxfiy ma'lumot filtri — Claude API ga yuborilmaydi
         sensitive_type = _detect_sensitive(text)
         if sensitive_type:
+            is_identity = sensitive_type in _IDENTITY_TYPES
             logger.warning(
-                f"Maxfiy ma'lumot aniqlandi [{sensitive_type}]: user={telegram_id} — API ga yuborilmadi"
+                f"Maxfiy ma'lumot aniqlandi [{sensitive_type}]: user={telegram_id} — "
+                f"API ga yuborilmadi"
+                + (" (shaxsiy hujjat — egaga yo'naltirildi)" if is_identity else "")
             )
             msg = await message_repo.create(
                 db=db, user_id=user.id, role=MessageRole.USER,
@@ -139,7 +181,21 @@ class AIService:
                 telegram_message_id=telegram_message_id,
             )
             lang = _detect_lang(text)
-            reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
+            if is_identity:
+                # Ega hujjat so'ragan bo'lishi mumkin — xabar yo'qolib ketmasligi
+                # uchun egaga bildiramiz. Matnning O'ZI bildirishnomaga
+                # qo'shilmaydi: u allaqachon eganing Telegramida, takrorlash
+                # shaxsiy ma'lumotni yana bir kanaldan o'tkazgan bo'lardi.
+                reply = _IDENTITY_ACK_REPLIES.get(lang, _IDENTITY_ACK_REPLIES["uz"])
+                asyncio.create_task(
+                    self._notify_owner(
+                        user, text,
+                        "Shaxsiy hujjat ma'lumotlarini yubordi (matn ko'rsatilmadi)",
+                        include_preview=False,
+                    )
+                )
+            else:
+                reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
             msg.agent_response = reply
             await db.flush()
             return msg, reply
@@ -167,6 +223,25 @@ class AIService:
                 content=text, telegram_message_id=telegram_message_id,
             )
             return msg, None
+
+        # 3b. Hujjat (CV, obyektivka, shartnoma...) — mazmuni o'qilmaydi, lekin
+        # ega odamlardan hujjat so'raydi, shuning uchun uni oddiy matn sifatida
+        # klassifikatsiyaga yubormaymiz (u yerda "📎 Fayl yuborildi" degan matnga
+        # umumiy javob yozilardi). Foydalanuvchi tasdiq oladi, ega bildirishnoma.
+        if message_type == MessageType.DOCUMENT:
+            lang = _detect_lang(text)
+            reply = _DOCUMENT_ACK_REPLIES.get(lang, _DOCUMENT_ACK_REPLIES["uz"])
+            msg = await message_repo.create(
+                db=db, user_id=user.id, role=MessageRole.USER,
+                content=text, message_type=message_type,
+                telegram_message_id=telegram_message_id,
+            )
+            msg.agent_response = reply
+            await db.flush()
+            logger.info(f"Hujjat qabul qilindi: user={telegram_id} — {text[:60]}")
+            asyncio.create_task(self._notify_owner(user, text, "Hujjat yubordi"))
+            await memory_manager.add_exchange(db, user, text, reply)
+            return msg, reply
 
         # 4. Parallel: spam tahlil + klassifikatsiya + kontekst
         history_task = asyncio.create_task(
@@ -348,11 +423,13 @@ class AIService:
         return f"{intro} {ending}"
 
     async def _notify_owner(
-        self, user: TelegramUser, text: str, reason: str
+        self, user: TelegramUser, text: str, reason: str, include_preview: bool = True
     ) -> None:
         try:
             from app.services.notification_service import notification_service
-            await notification_service.notify_important(user, text, reason)
+            await notification_service.notify_important(
+                user, text, reason, include_preview=include_preview
+            )
         except Exception as e:
             logger.error(f"Bildirishnomada xato: {e}")
 

@@ -14,8 +14,15 @@ class NotificationService:
         message_text: str,
         reason: str,
         category: str = "important",
+        include_preview: bool = True,
     ) -> None:
-        """Muhim xabarni egaga bot orqali yuboradi."""
+        """Muhim xabarni egaga bot orqali yuboradi.
+
+        `include_preview=False` — xabar matni bildirishnomaga qo'shilmaydi.
+        Shaxsiy hujjat ma'lumotlari uchun shunday qilinadi: matn allaqachon
+        eganing Telegramida, uni bot orqali takrorlash shaxsiy ma'lumotni
+        yana bir kanaldan o'tkazgan bo'lardi.
+        """
         if not settings.owner_telegram_id:
             return
 
@@ -37,11 +44,12 @@ class NotificationService:
         }
         emoji = emoji_map.get(category, "🔔")
 
+        body = f"📩 _{preview}_\n\n" if include_preview else "🔒 _Matn ko'rsatilmadi — chatdan o'qing_\n\n"
         text = (
             f"{emoji} **Muhim xabar!**\n\n"
             f"👤 **{name}**{username_part}\n"
             f"🆔 `{user.telegram_id}`\n\n"
-            f"📩 _{preview}_\n\n"
+            f"{body}"
             f"🏷 **Sabab:** {reason}"
         )
 

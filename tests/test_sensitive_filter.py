@@ -4,9 +4,16 @@ Roadmap Faza 2, band 4-5 (Luhn tekshiruvi, JSHSHIR uchun kontekst talabi)
 qo'llanilgandan keyin — avvalgi yolg'on-ijobiylar endi to'g'ri rad etiladi
 (`TestFixedFalsePositives` klassiga qarang).
 """
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
-from app.services.ai_service import _detect_sensitive, _luhn_valid
+from app.database.models import MessageType
+from app.services.ai_service import (
+    ai_service, _detect_sensitive, _luhn_valid, _IDENTITY_TYPES,
+)
 
 
 class TestDetectsKnownCategories:
@@ -64,3 +71,86 @@ class TestLuhnValid:
 
     def test_arbitrary_sequence_is_invalid(self):
         assert _luhn_valid("123456789012345678") is False
+
+
+class TestIdentityVsSecret:
+    """Ega odamlardan CV/obyektivka so'raydi — shaxsni tasdiqlovchi ma'lumot
+    rad etilmaydi, lekin parol/karta/OTP uchun ogohlantirish qoladi."""
+
+    def test_identity_types_are_document_data_only(self):
+        assert _IDENTITY_TYPES == {"passport", "jshshir"}
+
+    @pytest.mark.parametrize("text", [
+        "password: mySecret123",
+        "cvv: 123",
+        "otp: 483920",
+        "Mening kartam: 4111 1111 1111 1111",
+    ])
+    def test_secrets_are_not_treated_as_identity(self, text):
+        assert _detect_sensitive(text) not in _IDENTITY_TYPES
+
+
+@pytest.mark.asyncio
+async def test_identity_data_is_accepted_and_owner_notified(db_session):
+    """Obyektivka matni: foydalanuvchi tasdiq oladi, ega bildirishnoma oladi."""
+    with patch.object(ai_service, "_notify_owner", AsyncMock()) as notify:
+        msg, reply = await ai_service.process_message(
+            db=db_session, telegram_id=900050001,
+            text="Obyektivkam: Aliyev Vali, pasport AA1234567, 1995-yil",
+        )
+        await asyncio.sleep(0)  # create_task ishga tushishi uchun
+
+    assert "qabul qilindi" in reply
+    assert "ulashmang" not in reply                     # ogohlantirish emas
+    assert msg.content == "[MAXFIY MA'LUMOT — saqlanmadi]"  # matn saqlanmaydi
+    notify.assert_called_once()
+    # Matn bildirishnomada takrorlanmaydi — u allaqachon eganing Telegramida
+    assert notify.call_args.kwargs["include_preview"] is False
+
+
+@pytest.mark.asyncio
+async def test_password_still_gets_the_warning(db_session):
+    """Sir (parol) uchun eski xulq saqlanadi — bu ega so'ramaydigan ma'lumot."""
+    with patch.object(ai_service, "_notify_owner", AsyncMock()) as notify:
+        _, reply = await ai_service.process_message(
+            db=db_session, telegram_id=900050002, text="parol: qwerty123",
+        )
+        await asyncio.sleep(0)
+
+    assert "ulashmang" in reply
+    notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_document_is_acknowledged_without_llm(db_session):
+    """CV fayl: klassifikatsiyaga bormaydi, tasdiq javobi va bildirishnoma beradi."""
+    with patch.object(ai_service, "_notify_owner", AsyncMock()) as notify, \
+         patch("app.services.ai_service.memory_manager.add_exchange", AsyncMock()), \
+         patch("app.services.ai_service.analysis_agent.analyze_message",
+               AsyncMock(side_effect=AssertionError("hujjat uchun LLM chaqirilmasligi kerak"))):
+        msg, reply = await ai_service.process_message(
+            db=db_session, telegram_id=900050003,
+            text="📎 Hujjat yuborildi: CV_Aliyev.pdf",
+            message_type=MessageType.DOCUMENT,
+        )
+        await asyncio.sleep(0)
+
+    assert "qabul qilindi" in reply
+    assert msg.agent_response == reply
+    notify.assert_called_once()
+    assert "CV_Aliyev.pdf" in notify.call_args.args[1]   # fayl nomi egaga ko'rinadi
+
+
+def test_document_label_uses_the_file_name():
+    from telethon.tl.types import DocumentAttributeFilename
+    from app.services.telegram_service import telegram_service
+
+    message = SimpleNamespace(
+        document=SimpleNamespace(attributes=[DocumentAttributeFilename("CV_Aliyev.pdf")])
+    )
+    assert telegram_service._document_label(message) == "📎 Hujjat yuborildi: CV_Aliyev.pdf"
+
+    # Nomi topilmasa umumiy yorliq
+    assert telegram_service._document_label(
+        SimpleNamespace(document=SimpleNamespace(attributes=[]))
+    ) == "📎 Hujjat yuborildi"
