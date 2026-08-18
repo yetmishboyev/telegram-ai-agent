@@ -33,6 +33,13 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
+      # Konteynerda curl/wget yo'q, shuning uchun --health-cmd o'rniga
+      # pastdagi "Wait for ChromaDB" qadami runner tomonidan tekshiradi.
+      # Port 8001 ga map qilinadi — CHROMA_PORT bilan bir xil.
+      chromadb:
+        image: chromadb/chroma:latest
+        ports:
+          - 8001:8000
 
     env:
       TELEGRAM_API_ID: "12345"
@@ -67,6 +74,19 @@ jobs:
 
       - name: Run database migrations
         run: uv run alembic upgrade head
+
+      - name: Wait for ChromaDB
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8001/api/v2/heartbeat \
+               || curl -sf http://localhost:8001/api/v1/heartbeat; then
+              echo "ChromaDB tayyor"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ChromaDB 120 soniyada javob bermadi"
+          exit 1
 
       - name: Run tests
         run: uv run pytest -v
