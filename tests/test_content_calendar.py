@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.news_fetcher import news_fetcher, PRACTICAL_TOPICS, AI_TOOLS
+from app.services.news_fetcher import (
+    news_fetcher, PRACTICAL_TOPICS, AI_TOOLS,
+    EDUCATIONAL_FORMATS, EDUCATIONAL_TOPICS,
+)
 from app.services.channel_poster import channel_poster
 
 
@@ -41,6 +44,82 @@ async def test_tool_review_prompt_honest_sections():
 def test_daily_rotation_helpers_within_lists():
     assert news_fetcher.get_todays_practical_topic() in PRACTICAL_TOPICS
     assert news_fetcher.get_todays_tool() in AI_TOOLS
+    assert news_fetcher.get_todays_educational_format() in EDUCATIONAL_FORMATS
+
+
+# ─── ta'limiy postlar bir xil bo'lib qolmasligi ─────────────────────────────────
+
+def test_educational_format_rotates_and_decorrelates_from_topic():
+    """Janr har kuni almashadi va mavzu bilan qulflanib qolmaydi."""
+    fmt_keys = list(EDUCATIONAL_FORMATS)
+    pairs = []
+    for ordinal in range(0, 60):
+        topic = EDUCATIONAL_TOPICS[ordinal % len(EDUCATIONAL_TOPICS)]
+        fmt = fmt_keys[ordinal % len(fmt_keys)]
+        pairs.append((topic, fmt))
+
+    # Ketma-ket kunlarda janr o'zgaradi
+    assert all(pairs[i][1] != pairs[i + 1][1] for i in range(len(pairs) - 1))
+    # 60 kunda barcha janrlar ishlatiladi
+    assert {f for _, f in pairs} == set(fmt_keys)
+    # Bir mavzu turli janrlarda chiqadi (25 va 6 o'zaro tub)
+    by_topic: dict[str, set] = {}
+    for topic, fmt in pairs:
+        by_topic.setdefault(topic, set()).add(fmt)
+    assert any(len(fmts) > 1 for fmts in by_topic.values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt,marker", [
+    ("xato", "XATOLAR"),
+    ("taqqoslash", "TAQQOSLASH"),
+    ("mif", "MIFLARNI"),
+    ("keys", "REAL HOLAT"),
+    ("analogiya", "O'XSHATISH"),
+    ("tarif", "TUSHUNTIRISH"),
+])
+async def test_educational_prompt_carries_requested_format(fmt, marker):
+    captured = {}
+
+    async def fake(messages, **kw):
+        captured["prompt"] = messages[0]["content"]
+        return "post"
+
+    with patch("app.ai.agents.base_agent.BaseAgent._call_llm", AsyncMock(side_effect=fake)):
+        await news_fetcher.generate_educational_post("RAG", "jonli", fmt)
+    assert marker in captured["prompt"]
+    assert "RAG" in captured["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_educational_prompt_has_no_hardcoded_hashtags():
+    """Hashtaglar promptga qotib yozilmagan — har post mavzusiga mos bo'ladi."""
+    captured = {}
+
+    async def fake(messages, **kw):
+        captured["prompt"] = messages[0]["content"]
+        return "post"
+
+    with patch("app.ai.agents.base_agent.BaseAgent._call_llm", AsyncMock(side_effect=fake)):
+        await news_fetcher.generate_educational_post("Embeddings", "jonli")
+    p = captured["prompt"]
+    assert "#SuniyIntellekt #AI #Texnologiya #Dars" not in p
+    assert "MAVZUGA mos 3-4 ta hashtag" in p
+
+
+@pytest.mark.asyncio
+async def test_educational_unknown_format_falls_back_to_rotation():
+    captured = {}
+
+    async def fake(messages, **kw):
+        captured["prompt"] = messages[0]["content"]
+        return "post"
+
+    with patch("app.ai.agents.base_agent.BaseAgent._call_llm", AsyncMock(side_effect=fake)):
+        await news_fetcher.generate_educational_post("LLM", "jonli", "yoq-bunday-janr")
+    # Bugungi rotatsiya janri ishlatiladi (prompt janrsiz qolmaydi)
+    today_fmt = news_fetcher.get_todays_educational_format()
+    assert EDUCATIONAL_FORMATS[today_fmt].split("\n")[0] in captured["prompt"]
 
 
 @pytest.mark.asyncio

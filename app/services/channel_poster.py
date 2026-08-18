@@ -11,14 +11,44 @@ CHANNEL_FOOTER_HTML = (
 )
 
 
+def _quotes_to_html(text: str) -> str:
+    """`> ` bilan boshlangan qatorlarni Telegram sitata blokiga aylantiradi.
+
+    Ketma-ket kelgan `>` qatorlar BITTA sitataga birlashtiriladi — aks holda
+    Telegram har qatorni alohida blok qilib ko'rsatib, post titraydi.
+    Model ba'zan `>` ni `&gt;` yoki `\\>` ko'rinishida qaytaradi, ikkovi ham
+    qabul qilinadi. Qator o'rtasidagi ">" (masalan "5 > 3") tegilmaydi.
+    """
+    quote_re = re.compile(r'^\s*(?:&gt;|\\>|>)\s?(.*)$')
+    result: list[str] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if buffer:
+            result.append('<blockquote>' + '\n'.join(buffer) + '</blockquote>')
+            buffer.clear()
+
+    for line in text.split('\n'):
+        match = quote_re.match(line)
+        if match:
+            buffer.append(match.group(1).strip())
+        else:
+            flush()
+            result.append(line)
+    flush()
+    return '\n'.join(result)
+
+
 def _md_to_html(text: str) -> str:
-    """Telegram Markdown → HTML (bold, italic)."""
+    """Telegram Markdown → HTML (bold, italic, sitata)."""
     # **bold** → <b>bold</b>
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text, flags=re.DOTALL)
     # *italic* → <i>italic</i>  (bitta yulduzcha, lekin URL va emoji ichida emas)
     text = re.sub(r'(?<![/\w\*])\*(?!\s)(.+?)(?<!\s)\*(?!\w)', r'<i>\1</i>', text, flags=re.DOTALL)
     # _italic_ → <i>italic</i>  (URL ichidagi _ ga tegmaydi)
     text = re.sub(r'(?<![/\w])_(.+?)_(?!\w)', r'<i>\1</i>', text, flags=re.DOTALL)
+    # `> ` qatorlari → <blockquote> (qalin/kursiv ichida saqlanib qoladi)
+    text = _quotes_to_html(text)
     return text
 
 
@@ -39,9 +69,14 @@ class ChannelPoster:
             return None
 
     async def _save_channel_post(
-        self, telegram_message_id: int, post_type: str, topic: str, text: str
+        self, telegram_message_id: int, post_type: str, topic: str, text: str,
+        category: str = "",
     ) -> None:
-        """Kanalga yuborilgan postni DB ga saqlaydi."""
+        """Kanalga yuborilgan postni DB ga saqlaydi.
+
+        `category` — yangilik postlari uchun curation belgilagan kategoriya;
+        keyingi kunlarda tanlov shu tarixga qarab xilma-xil bo'ladi.
+        """
         try:
             from app.database.session import AsyncSessionLocal
             from app.database.models import ChannelPost
@@ -52,6 +87,7 @@ class ChannelPoster:
                     telegram_message_id=telegram_message_id,
                     post_type=post_type,
                     topic=topic or "",
+                    category=category or None,
                     text_preview=clean[:500].strip(),
                     views=0,
                 )
@@ -62,7 +98,8 @@ class ChannelPoster:
             logger.error(f"ChannelPost saqlashda xato: {e}")
 
     async def _send_for_approval(
-        self, text: str, post_type: str, topic: str = "", style: str = ""
+        self, text: str, post_type: str, topic: str = "", style: str = "",
+        category: str = "",
     ) -> None:
         """Postni egaga tasdiqlash uchun botda ko'rsatadi."""
         from telethon import Button
@@ -87,7 +124,7 @@ class ChannelPoster:
             86400,
             json.dumps({
                 "text": text_with_footer, "post_type": post_type,
-                "topic": topic, "style": style,
+                "topic": topic, "style": style, "category": category,
             }),
         )
 
@@ -136,7 +173,12 @@ class ChannelPoster:
             post_type=data["post_type"],
             topic=data.get("topic", ""),
         )
-        await self._send_for_approval(new_text, data["post_type"], data.get("topic", ""))
+        # Uslub va kategoriya saqlanadi — tahrirdan keyin ham post o'z
+        # uslubida qoladi va tasdiqlanganda kategoriya tarixga yoziladi.
+        await self._send_for_approval(
+            new_text, data["post_type"], data.get("topic", ""),
+            data.get("style", ""), data.get("category", ""),
+        )
 
     async def regenerate_new_and_send_for_approval(self, post_id: str) -> None:
         """Avvalgi postni o'chirib, tamomila boshqa mavzuda yangi post tayyorlab yuboradi."""
@@ -179,9 +221,9 @@ class ChannelPoster:
             await self._send_for_approval(new_text, "free", old_topic, style)
         else:
             # Yangiliklar: tasodifiy tartib — curation boshqa yangilikni tanlaydi
-            new_text, topic = await self._build_deep_news(style, shuffled=True)
+            new_text, topic, category = await self._build_deep_news(style, shuffled=True)
             if new_text:
-                await self._send_for_approval(new_text, "news", topic, style)
+                await self._send_for_approval(new_text, "news", topic, style, category)
 
     async def refresh_views(self) -> None:
         """Kanalga yuborilgan postlarning ko'rish sonini Telegram'dan yangilaydi."""
@@ -319,45 +361,80 @@ class ChannelPoster:
         try:
             from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
             logger.info("AI yangiliklari yig'ilmoqda (curation uchun keng ro'yxat)...")
-            text, topic = await self._build_deep_news(DEFAULT_STYLE)
+            text, topic, category = await self._build_deep_news(DEFAULT_STYLE)
             if not text:
                 logger.warning("Yangilik topilmadi — post o'tkazib yuborildi")
                 return
-            await self._send_for_approval(text, "news", topic, DEFAULT_STYLE)
+            await self._send_for_approval(text, "news", topic, DEFAULT_STYLE, category)
         except Exception as e:
             logger.error(f"Yangiliklar post xatosi: {e}")
 
+    async def _recent_news_posts(self) -> list[dict]:
+        """Oxirgi kunlarda chiqqan yangilik postlari (eng yangisi birinchi).
+
+        Curation shu tarixni ko'rib, o'sha yangilikni yoki o'sha kategoriyani
+        qayta tanlamaydi — busiz kanalda bitta tema takrorlanib qolardi.
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+            from sqlalchemy import select, desc
+            from app.database.session import AsyncSessionLocal
+            from app.database.models import ChannelPost
+            from app.services.news_fetcher import NEWS_HISTORY_DAYS
+
+            since = datetime.now(timezone.utc) - timedelta(days=NEWS_HISTORY_DAYS)
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(ChannelPost)
+                    .where(
+                        ChannelPost.post_type == "news",
+                        ChannelPost.sent_at >= since,
+                    )
+                    .order_by(desc(ChannelPost.sent_at))
+                    .limit(10)
+                )
+                posts = result.scalars().all()
+            return [{"topic": p.topic or "", "category": p.category or ""} for p in posts]
+        except Exception as e:
+            logger.warning(f"Yangilik tarixini o'qishda xato — tarixsiz davom etadi: {e}")
+            return []
+
     async def _build_deep_news(
         self, style: str, shuffled: bool = False
-    ) -> tuple[str | None, str]:
+    ) -> tuple[str | None, str, str]:
         """Keng yangilik ro'yxatidan eng muhimini tanlab, chuqur post tayyorlaydi.
 
-        Returns: (post_matni | None, tanlangan sarlavha).
+        Returns: (post_matni | None, tanlangan sarlavha, kategoriya).
         """
-        from app.services.news_fetcher import news_fetcher
+        from app.services.news_fetcher import news_fetcher, NEWS_POOL_SIZE
         if shuffled:
-            items = await news_fetcher.get_ai_news_shuffled(count=10)
+            items = await news_fetcher.get_ai_news_shuffled(count=NEWS_POOL_SIZE)
         else:
-            items = await news_fetcher.get_ai_news(count=10)
-        picked = await news_fetcher.curate_top_news(items)
+            items = await news_fetcher.get_ai_news(count=NEWS_POOL_SIZE)
+        recent = await self._recent_news_posts()
+        picked = await news_fetcher.curate_top_news(items, recent=recent)
         if not picked:
-            return None, ""
+            return None, "", ""
         item = picked["item"]
-        logger.info(f"Curation tanladi: {item['title'][:70]} — {picked['reason'][:80]}")
+        category = picked.get("category", "")
+        logger.info(
+            f"Curation tanladi [{category}]: {item['title'][:70]} — {picked['reason'][:80]}"
+        )
         text = await news_fetcher.generate_deep_news_post(
             item, style, curation_reason=picked["reason"]
         )
-        return text, item["title"][:200]
+        return text, item["title"][:200], category
 
     async def create_on_demand(self, post_type: str, style: str, topic: str = "") -> None:
         """Bot menyusidan chaqiriladigan on-demand post yaratish (tur + uslub)."""
         try:
             from app.services.news_fetcher import news_fetcher
+            category = ""
             if post_type == "educational":
                 topic = topic or news_fetcher.get_todays_topic()
                 text = await news_fetcher.generate_educational_post(topic, style)
             elif post_type == "news":
-                text, topic = await self._build_deep_news(style)
+                text, topic, category = await self._build_deep_news(style)
                 if not text:
                     await self._notify_owner_text("❌ Hozircha yangilik topilmadi — keyinroq urinib ko'ring.")
                     return
@@ -369,7 +446,7 @@ class ChannelPoster:
                 text = await news_fetcher.generate_tool_review_post(topic, style)
             else:  # free — ega bergan mavzu
                 text = await news_fetcher.generate_free_post(topic, style)
-            await self._send_for_approval(text, post_type, topic, style)
+            await self._send_for_approval(text, post_type, topic, style, category)
         except Exception as e:
             logger.error(f"On-demand post xatosi: {e}")
 
