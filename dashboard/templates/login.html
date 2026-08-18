@@ -67,6 +67,19 @@
 
 {% block scripts %}
 <script>
+// FastAPI xato javobini o'qiladigan matnga aylantiradi. 401/429 da `detail`
+// satr bo'ladi, 422 (validatsiya) da esa [{loc, msg, ...}] MASSIVI — uni
+// to'g'ridan-to'g'ri x-text ga bersak "[object Object]" chiqib qolardi.
+function errorText(detail, fallback) {
+    if (!detail) return fallback;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        const msgs = detail.map(d => d && d.msg).filter(Boolean);
+        return msgs.length ? msgs.join('; ') : fallback;
+    }
+    return detail.msg || fallback;
+}
+
 function loginPage() {
     return {
         username: '',
@@ -75,6 +88,13 @@ function loginPage() {
         loading: false,
         error: '',
         async login() {
+            // Bo'sh maydonlar serverga borsa 422 qaytadi va xabar tushunarsiz
+            // bo'ladi — shuning uchun shu yerda to'xtatamiz. (Brauzer parolni
+            // avto-to'ldirgandek ko'rsatib, DOM ga yozmagan holat ham shu yerga tushadi.)
+            if (!this.username.trim() || !this.password) {
+                this.error = 'Username va parolni kiriting';
+                return;
+            }
             this.loading = true;
             this.error = '';
             try {
@@ -87,7 +107,7 @@ function loginPage() {
                     localStorage.setItem('token', data.access_token);
                     window.location.href = '/dashboard/';
                 } else {
-                    this.error = data.detail || 'Login yoki parol noto\'g\'ri';
+                    this.error = errorText(data.detail, 'Login yoki parol noto\'g\'ri');
                 }
             } catch {
                 this.error = 'Server bilan bog\'lanishda xato';
