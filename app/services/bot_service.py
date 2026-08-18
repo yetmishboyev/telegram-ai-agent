@@ -490,6 +490,7 @@ class BotService:
                 post_type=data.get("post_type", "news"),
                 topic=data.get("topic", ""),
                 text=data["text"],
+                category=data.get("category", ""),
             )
             await event.edit("✅ Post kanalga yuborildi!")
         else:

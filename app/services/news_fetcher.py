@@ -31,6 +31,33 @@ NEWS_TG_CHANNELS = [
 # Faqat shu oynadagi yangiliklar "so'nggi" hisoblanadi
 NEWS_FRESHNESS_HOURS = 48
 
+# Curation'ga beriladigan nomzodlar soni. Ilgari 10 edi — round-robin bitta
+# aylanishda tugab, har manbadan FAQAT 1 ta (bosh sahifadagi eng yangi)
+# sarlavha olinardi. Natijada tanlov doim bir xil "kun mavzusi" doirasida
+# qolib, kanalda bitta tema takrorlanardi. 30 nomzod har manbadan 2-3 ta beradi.
+NEWS_POOL_SIZE = 30
+
+# Tanlangan yangilik oxirgi shu kun ichida chiqqan postlar bilan solishtiriladi
+NEWS_HISTORY_DAYS = 14
+
+# Sarlavhalar shu darajadan ko'p o'xshasa — bir xil yangilik deb hisoblanadi
+NEWS_DUPLICATE_RATIO = 0.75
+
+# ─── yangilik kategoriyalari ───────────────────────────────────────────────────
+# Curation'ning yagona mezoni "eng qiziqarli muhokama uyg'otadigani" edi —
+# model bunga har kuni bir xil javob berardi: eng shov-shuvli, "AI nazoratdan
+# chiqdi" turidagi sarlavha. Kategoriya katalogi + oxirgi postlar tarixi
+# promptga berilib, tanlov aylanishi ta'minlanadi.
+NEWS_CATEGORIES: dict[str, str] = {
+    "mahsulot":   "yangi model, mahsulot yoki funksiya chiqishi",
+    "tadqiqot":   "ilmiy natija, benchmark, texnik kashfiyot",
+    "biznes":     "investitsiya, bozor, kompaniya strategiyasi, mehnat bozori",
+    "vosita":     "foydalanuvchi bugun ishlata oladigan amaliy vosita yoki servis",
+    "siyosat":    "regulyatsiya, qonun, davlat siyosati, sud ishi",
+    "xavfsizlik": "AI xavfi, nazorat, zaiflik, etika muammosi",
+}
+NEWS_FALLBACK_CATEGORY = "boshqa"
+
 # 09:00 dagi ta'limiy postlar uchun mavzular (rotatsiya)
 EDUCATIONAL_TOPICS = [
     "Large Language Model (LLM)",
@@ -60,6 +87,56 @@ EDUCATIONAL_TOPICS = [
     "Knowledge Graph nima",
 ]
 
+
+# ─── ta'limiy post janrlari ────────────────────────────────────────────────────
+# Mavzu har kuni aylanardi, lekin post SHAKLI o'zgarmasdi ("X nima → qanday
+# ishlaydi → qayerda qo'llaniladi → nega muhim"), shuning uchun barcha ta'limiy
+# postlar bir xil o'qilardi. Janr mavzudan MUSTAQIL aylanadi: 6 janr va 25 mavzu
+# o'zaro tub, shuning uchun mavzu-janr juftligi 150 postda bir marta takrorlanadi.
+EDUCATIONAL_FORMATS: dict[str, str] = {
+    "tarif": (
+        "JANR — TUSHUNTIRISH: tushunchani noldan tushuntir.\n"
+        "- Kundalik hayotdan tanish misol bilan boshla, keyin atamaga o't\n"
+        "- Qanday ishlashini qisqa, o'xshatish bilan ayt\n"
+        "- 2-3 ta real qo'llanish holati\n"
+        "- Nega bu bilim o'quvchiga kerakligi bilan yakunla"
+    ),
+    "xato": (
+        "JANR — KENG TARQALGAN XATOLAR: shu mavzuda odamlar qiladigan xatolar.\n"
+        "- Boshida: bu mavzuda ko'pchilik nimani noto'g'ri qiladi\n"
+        "- 3 ta aniq xato — har birida: xato nima, nega yuz beradi, TO'G'RI yo'l\n"
+        "- Yakunda: shu 3 tasidan qutulgan odam nimaga erishadi"
+    ),
+    "taqqoslash": (
+        "JANR — TAQQOSLASH: mavzuni u bilan doim aralashtiriladigan yaqin "
+        "tushuncha bilan yonma-yon qo'y.\n"
+        "- Boshida: nega bu ikkisi aralashtiriladi\n"
+        "- Asosiy farqni 1 gapda ayt, keyin 3 o'lchov bo'yicha yonma-yon ko'rsat\n"
+        "- Qaysi holatda qaysi biri kerakligi bilan yakunla"
+    ),
+    "mif": (
+        "JANR — MIFLARNI BUZISH: mavzu atrofidagi noto'g'ri qarashlar.\n"
+        "- Boshida: bu haqda eng ko'p uchraydigan noto'g'ri fikr\n"
+        "- 3 ta mif — har birida: «Mif: ...» keyin «Haqiqat: ...»\n"
+        "- Yakunda: haqiqatni bilgan odam nimani boshqacha qiladi"
+    ),
+    "keys": (
+        "JANR — REAL HOLAT: mavzuni bitta konkret hikoya orqali tushuntir.\n"
+        "- Aniq (lekin o'ylab topilmagan, tipik) holat bilan boshla: kim, "
+        "qanday muammoga duch keldi\n"
+        "- Mavzudagi tushuncha bu muammoni qanday hal qilgani\n"
+        "- Natija, keyin o'quvchi shu holatdan oladigan 2 ta xulosa\n"
+        "- Aniq raqam yoki kompaniya nomini TO'QIMA — umumlashtirib yoz"
+    ),
+    "analogiya": (
+        "JANR — O'XSHATISH: butun postni bitta kuchli o'xshatish ustiga qur.\n"
+        "- Mavzuni AI'ga aloqasi yo'q, hammaga tanish narsaga o'xshat "
+        "(oshxona, yo'l harakati, kutubxona, bozor kabi)\n"
+        "- O'xshatishni 3 nuqtada davom ettir: nima nimaga to'g'ri keladi\n"
+        "- O'xshatish QAYERDA buzilishini ham ayt (halollik uchun)\n"
+        "- Asl atama bilan bir gaplik xulosa"
+    ),
+}
 
 # Amaliy qo'llanma postlari uchun mavzular (rotatsiya) — eng ulashiladigan format
 PRACTICAL_TOPICS = [
@@ -141,6 +218,16 @@ DEFAULT_STYLE = "jonli"
 _LATIN_RULE = (
     " MUHIM: butun matnni FAQAT o'zbek LOTIN alifbosida yoz — biror so'zga ham "
     "krill harflarini (а, б, в, г, д...) aralashtirma."
+)
+
+# Postning asosiy joyi ko'zga tashlanib turishi uchun — `> ` qatorlari
+# `channel_poster._md_to_html` da Telegram sitata blokiga aylanadi.
+_QUOTE_RULE = (
+    "- SITATA: postning eng muhim fikrini ALOHIDA qatorda `> ` belgisi bilan "
+    "boshlab yoz — Telegram uni sitata bloki qilib ajratib ko'rsatadi. Postda "
+    "1 ta (uzun postda ko'pi bilan 2 ta) sitata bo'lsin, har biri 1-2 qisqa gap. "
+    "Sitata mustaqil o'qilsin, yonidagi matnni so'zma-so'z takrorlamasin va "
+    "sarlavha yoki hashtag qatori bo'lmasin."
 )
 
 
@@ -228,12 +315,13 @@ Postlar:
     async def _call_llm(self, *args, **kwargs) -> str:
         """Post generatsiyasi natijasini lotinlashtiradi — LLM ba'zan lotincha
         o'zbek matniga krill harflarni aralashtirib yuboradi (masalan "qidirади").
-        Shuningdek markdown-escape qilingan hashtaglarni (\\#) va (uslub o'rganilgan
-        bo'lsa) namuna kanalning imzosini deterministik tozalaydi — prompt qoidasi
-        yetarli emas, model manba nomini ko'rib postga qo'shib yuborishi mumkin."""
+        Shuningdek markdown-escape qilingan hashtag (\\#) va sitata (\\>)
+        belgilarini, hamda (uslub o'rganilgan bo'lsa) namuna kanalning imzosini
+        deterministik tozalaydi — prompt qoidasi yetarli emas, model manba nomini
+        ko'rib postga qo'shib yuborishi mumkin."""
         import re as _re
         result = await super()._call_llm(*args, **kwargs)
-        result = to_latin_uz(result).replace("\\#", "#")
+        result = to_latin_uz(result).replace("\\#", "#").replace("\\>", ">")
         source = (self._learned_style or {}).get("source")
         if source and source.lower() in result.lower():
             # imzo qatori bo'lsa qatorni, matn ichida bo'lsa faqat mention'ni olamiz
@@ -245,9 +333,15 @@ Postlar:
 
     @staticmethod
     def _is_fresh(pub_date: str, hours: int = NEWS_FRESHNESS_HOURS) -> bool:
-        """pubDate so'nggi `hours` ichidami. Parse bo'lmasa True (item tashlanmaydi)."""
+        """pubDate so'nggi `hours` ichidami.
+
+        Sanasi yo'q yoki o'qilmaydigan item TASHLANADI: barcha 9 feed har bir
+        item uchun pubDate beradi (2026-08 da tekshirilgan), shuning uchun sana
+        yo'qligi feed buzilganini bildiradi — bunday itemni ichga qo'yish
+        eskirgan yangilikning qayta-qayta tanlanishiga olib kelardi.
+        """
         if not pub_date:
-            return True
+            return False
         try:
             from email.utils import parsedate_to_datetime
             from datetime import datetime, timezone, timedelta
@@ -256,7 +350,8 @@ Postlar:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
         except Exception:
-            return True
+            logger.warning(f"pubDate o'qilmadi, item o'tkazib yuborildi: {pub_date[:40]!r}")
+            return False
 
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
         """RSS feeddan yangiliklar oladi (faqat so'nggi NEWS_FRESHNESS_HOURS ichidagilar)."""
@@ -355,13 +450,23 @@ Postlar:
                         break
         return interleaved
 
-    async def generate_educational_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
-        """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi."""
+    async def generate_educational_post(
+        self, topic: str, style: str = DEFAULT_STYLE, fmt: str | None = None
+    ) -> str:
+        """Berilgan AI mavzuda o'zbek tilida ta'limiy post yaratadi.
+
+        `fmt` — `EDUCATIONAL_FORMATS` kaliti (janr). Berilmasa bugungi
+        rotatsiyadan olinadi, shunda ketma-ket postlar bir xil shaklda chiqmaydi.
+        """
         style_text = await self._style_text(style)
+        fmt = fmt if fmt in EDUCATIONAL_FORMATS else self.get_todays_educational_format()
+        format_text = EDUCATIONAL_FORMATS[fmt]
         prompt = f"""
 Sen sun'iy intellekt sohasida 8-10 yillik tajribaga ega, o'z auditoriyasiga ega bo'lgan ekspert-muallifsan. Telegram kanalingga quyidagi mavzu bo'yicha post yozasan.
 
 Mavzu: {topic}
+
+{format_text}
 
 {style_text}
 
@@ -373,63 +478,138 @@ Talablar:
 - Emojilarni faqat sarlavhalarda emas, matn ichida ham joyida va tabiiy ishlat (haddan tashqari ko'p bo'lmasin — mazmunni jonlantirish uchun).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
 - Hajmi: 220–280 so'z.
-- Erkin tuzilishda yoz, lekin quyidagi mantiqiy oqimga amal qil (sarlavhalarni so'zma-so'z takrorlama, har safar biroz boshqacha ifodala):
-
-🎓 **[Mavzu sarlavhasi — jozibali va qiziqtiradigan]**
-
-[Nima bu — oddiy tilda, kundalik hayot yoki tanish misol bilan boshlab tushuntir]
-
-[Qanday ishlaydi — qisqa, tushunarli, kerak bo'lsa o'xshatish bilan]
-
-[Qayerda qo'llaniladi — 2–3 ta real hayotiy misol]
-
-[Nega bu muhim — o'z fikring yoki qisqa xulosa bilan yakunla]
-
-#SuniyIntellekt #AI #Texnologiya #Dars
+- Emoji + **qalin sarlavha** qatori bilan boshla. Sarlavha janrga mos bo'lsin va oldingi postlarni eslatmasin — "🎓" ni har safar takrorlashga majbur emassan.
+- Yuqoridagi janr tuzilishiga amal qil, lekin bo'lim sarlavhalarini so'zma-so'z yozma — matn tabiiy oqsin.
+{_QUOTE_RULE}
+- Oxiriga MAVZUGA mos 3-4 ta hashtag yoz (aynan shu mavzudan kelib chiqib — har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma.
 """
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            temperature=0.8,  # janr xilma-xilligi uchun biroz yuqori
             max_tokens=700,
         )
 
-    async def curate_top_news(self, items: list[dict]) -> dict | None:
-        """Yangiliklar ichidan auditoriya uchun ENG muhimini tanlaydi (curation).
+    @staticmethod
+    def _norm_title(title: str) -> str:
+        """Sarlavhani solishtirish uchun normallashtiradi (registr, tinish belgilari)."""
+        import re as _re
+        cleaned = _re.sub(r"[^\w\s]", " ", (title or "").lower())
+        return " ".join(cleaned.split())
 
-        Returns: {item, reason} yoki None (ro'yxat bo'sh bo'lsa).
+    @classmethod
+    def _is_repeat(cls, title: str, previous_titles: list[str]) -> bool:
+        """Sarlavha oldin chiqqan postlardan birini takrorlaydimi."""
+        from difflib import SequenceMatcher
+        current = cls._norm_title(title)
+        if not current:
+            return False
+        for prev in previous_titles:
+            other = cls._norm_title(prev)
+            if not other:
+                continue
+            if current == other or \
+                    SequenceMatcher(None, current, other).ratio() >= NEWS_DUPLICATE_RATIO:
+                return True
+        return False
+
+    async def curate_top_news(
+        self, items: list[dict], recent: list[dict] | None = None
+    ) -> dict | None:
+        """Yangiliklar ichidan kanal uchun ENG qimmatlisini tanlaydi (curation).
+
+        `recent` — oxirgi kunlarda chiqqan yangilik postlari (eng yangisi
+        birinchi): `[{"topic": ..., "category": ...}]`. Ikki qatlamda ishlaydi:
+          1. Deterministik — sarlavhasi oldingi post bilan mos keladigan
+             nomzodlar ro'yxatdan olib tashlanadi.
+          2. Prompt — tarix va kategoriya katalogi modelga berilib, ketma-ket
+             bir xil temaga tushib qolmasligi talab qilinadi.
+
+        Returns: {item, reason, category} yoki None (ro'yxat bo'sh bo'lsa).
         """
         from app.ai.agents.json_parse import parse_json_response
 
         if not items:
             return None
+
+        recent = recent or []
+        previous_titles = [str(r.get("topic") or "") for r in recent]
+
+        # 1-qatlam: allaqachon chiqqan yangilikni nomzodlardan olib tashlaymiz
+        fresh = [it for it in items if not self._is_repeat(it.get("title", ""), previous_titles)]
+        if not fresh:
+            # Hammasi takror bo'lsa ham kanal postsiz qolmasligi kerak
+            logger.warning("Barcha nomzodlar oldingi postlarni takrorlaydi — filtrsiz tanlanadi")
+            fresh = items
+        elif len(fresh) < len(items):
+            logger.info(f"Takroriy yangilik olib tashlandi: {len(items) - len(fresh)} ta")
+        items = fresh
+
         if len(items) == 1:
-            return {"item": items[0], "reason": ""}
+            return {"item": items[0], "reason": "", "category": NEWS_FALLBACK_CATEGORY}
 
         listing = "\n".join(
             f"{i}. [{it.get('source', 'sayt')}] {it['title']}\n   {it.get('desc', '')[:150]}"
             for i, it in enumerate(items)
         )
+        catalog = "\n".join(f"- {key}: {desc}" for key, desc in NEWS_CATEGORIES.items())
+
+        if recent:
+            history_lines = "\n".join(
+                f"- [{r.get('category') or '?'}] {str(r.get('topic') or '')[:120]}"
+                for r in recent[:10]
+            )
+            last_cats = [str(r.get("category")) for r in recent[:2] if r.get("category")]
+            avoid_line = (
+                f"\n\nOxirgi postlar kategoriyasi: {', '.join(last_cats)}. "
+                f"BOSHQA kategoriyadagi yangilikni tanla."
+                if last_cats else ""
+            )
+            history_block = (
+                f"Oxirgi {NEWS_HISTORY_DAYS} kunda kanalda chiqqan yangilik postlari "
+                f"(eng yangisi birinchi):\n{history_lines}{avoid_line}"
+            )
+        else:
+            history_block = "Kanalda hali yangilik posti chiqmagan."
+
         prompt = f"""Sen sun'iy intellekt mavzusidagi o'zbek Telegram kanalining bosh muharririsan. Auditoriya: texnologiyaga qiziquvchi oddiy foydalanuvchilar va IT mutaxassislar.
 
-Quyidagi yangiliklar ichidan kanal uchun ENG qimmatli BITTASINI tanla — auditoriya hayotiga eng ko'p ta'sir qiladigani yoki eng qiziqarli muhokama uyg'otadigani:
+{history_block}
+
+Kategoriyalar:
+{catalog}
+
+Quyidagi yangiliklar ichidan kanal uchun BITTASINI tanla:
 
 {listing}
 
-Faqat JSON qaytar: {{"index": <raqam>, "reason": "nega aynan shu — 1 gap"}}"""
+Tanlash qoidalari:
+1. TAKRORLAMA — yuqorida chiqqan yangilikning o'zini yoki juda yaqin variantini tanlama.
+2. XILMA-XILLIK — oxirgi postlar bilan bir xil kategoriyaga tushmasin. Kanal faqat bitta tema (masalan AI xavfsizligi) haqida bo'lib qolmasligi kerak.
+3. QIYMAT — shov-shuvli sarlavha emas, auditoriya uchun haqiqiy foydali yoki muhim yangilikni tanla. Dramatik ("AI nazoratdan chiqdi" turidagi) sarlavha faqat haqiqatan muhim bo'lsa tanlanadi.
+4. Tanlagan yangilikning kategoriyasini yuqoridagi ro'yxatdan belgila.
+
+Faqat JSON qaytar: {{"index": <raqam>, "category": "<kategoriya kaliti>", "reason": "nega aynan shu — 1 gap"}}"""
 
         try:
             raw = await self._call_llm(
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3, max_tokens=200,
+                temperature=0.3, max_tokens=300,
             )
             data = parse_json_response(raw)
             idx = int(data.get("index", 0))
             if not (0 <= idx < len(items)):
                 idx = 0
-            return {"item": items[idx], "reason": str(data.get("reason", ""))[:200]}
+            category = str(data.get("category", "")).strip().lower()
+            if category not in NEWS_CATEGORIES:
+                category = NEWS_FALLBACK_CATEGORY
+            return {
+                "item": items[idx],
+                "reason": str(data.get("reason", ""))[:200],
+                "category": category,
+            }
         except Exception as e:
             logger.warning(f"Curation xatosi — birinchi yangilik olinadi: {e}")
-            return {"item": items[0], "reason": ""}
+            return {"item": items[0], "reason": "", "category": NEWS_FALLBACK_CATEGORY}
 
     async def generate_deep_news_post(
         self, item: dict, style: str = DEFAULT_STYLE, curation_reason: str = ""
@@ -461,6 +641,7 @@ Qoidalar:
 - BITTA yangilik, chuqur — boshqa yangiliklar haqida yozma.
 - 180-260 so'z. Telegram Markdown (**qalin**, _kursiv_). Emoji tabiiy, me'yorida.
 - Sarlavha qatori bilan boshla: emoji + **qalin sarlavha** (o'zbekcha, jozibali).
+{_QUOTE_RULE}
 - Oxiriga 3-4 ta hashtag. Kanal linkini QO'SHMA.
 """
         return await self._call_llm(
@@ -573,6 +754,7 @@ Talablar:
 - Emojilarni matn ichida tabiiy ishlat (haddan oshirmasdan).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
 - Hajmi mavzuga mos bo'lsin: 150-280 so'z.
+{_QUOTE_RULE}
 - Oxiriga kanal linkini QO'SHMA — u avtomatik qo'shiladi.
 """
         return await self._call_llm(
@@ -600,6 +782,7 @@ Ega izohi (nima o'zgartirilsin):
 {feedback}
 
 Xuddi shu formatda, lekin izohga ko'ra tahrirlab, to'liq yangi postni qaytargin.
+Sitata qatorlarini (`> ` bilan boshlanadigan) saqla — ega boshqacha aytmagan bo'lsa.
 Oxiridagi "—" va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchalik avtomatik qo'shiladi.
 """
         return await self._call_llm(
@@ -623,7 +806,9 @@ Tuzilish:
 - 3-5 ta RAQAMLANGAN qadam. Har qadamda ANIQ amal — kerak bo'lsa aynan yozadigan prompt namunasini _kursiv_ da ber.
 - Yakun: kichik pro-maslahat yoki ogohlantirish + "sinab ko'ring va natijani yozing" CTA.
 
-Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — faqat qilinadigan ishlar. Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
+Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — faqat qilinadigan ishlar.
+{_QUOTE_RULE}
+Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7, max_tokens=800,
@@ -646,7 +831,9 @@ Tuzilish:
 - Kimga mos: 1 gap. Narxi: bepul/pullik holati (aniq bilmasang "bepul rejasi bor" kabi ehtiyotkor yoz, narx to'qima).
 - Yakun: o'z bahong (masalan "10 dan 8") + "siz ishlatib ko'rganmisiz?" CTA.
 
-Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima. Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
+Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima.
+{_QUOTE_RULE}
+Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7, max_tokens=800,
@@ -671,6 +858,7 @@ Qat'iy qoidalar:
 - Postning mazmuni, faktlari va uslubini (ohangini) SAQLA — sen tahrirchisan, qayta muallif emas.
 - Yangi fakt, raqam yoki va'da QO'SHMA.
 - Uzunlikni sezilarli oshirma (±15% chegarada qol).
+- SITATA: `> ` bilan boshlangan qatorlarni SAQLA (kerak bo'lsa ichidagi gapni kuchaytir, lekin `> ` belgisini olib tashlama). Agar qoralamada sitata bo'lmasa, eng muhim BITTA fikrni alohida qatorga chiqarib `> ` bilan belgila.
 - Hashtaglarni saqla. FAQAT o'zbek LOTIN alifbosida.
 - FAQAT yakuniy post matnini qaytar — baho, izoh, sarlavha yozma.
 
@@ -706,6 +894,12 @@ Qoralama post:
         day_index = date.today().toordinal() % len(EDUCATIONAL_TOPICS)
         return EDUCATIONAL_TOPICS[day_index]
 
+    def get_todays_educational_format(self) -> str:
+        """Bugungi ta'limiy post janrini tanlaydi (mavzudan mustaqil rotatsiya)."""
+        from datetime import date
+        keys = list(EDUCATIONAL_FORMATS)
+        return keys[date.today().toordinal() % len(keys)]
+
     def get_different_topic(self, exclude: str) -> str:
         """Berilgan mavzudan farqli, tasodifiy mavzu qaytaradi."""
         import random
@@ -719,7 +913,7 @@ Qoralama post:
         ro'yxat olib aralashtiradi — curation boshqa yangilikni tanlaydi.
         """
         import random
-        unique = await self.get_ai_news(count=40)
+        unique = await self.get_ai_news(count=max(40, count))
         random.shuffle(unique)
         return unique[:count]
 
@@ -772,7 +966,8 @@ Bu hafta kanalimizda eng ko'p o'qilgan postlar:
 
 (xuddi shu tarzda davom et)
 
-So'ngida qisqa xulosa: "Bu haftada eng ko'p qiziqish uyg'otgan mavzu: [mavzu nomi]"
+So'ngida qisqa xulosani SITATA blokiga ol (dayjest HTML formatida, shuning uchun aynan shu tegdan foydalan):
+<blockquote>Bu haftada eng ko'p qiziqish uyg'otgan mavzu: [mavzu nomi]</blockquote>
 
 Muhim: post linklar to'liq va to'g'ri bo'lishi shart. Oxiriga kanal linkini QO'SHMA — u avtomatik qo'shiladi.
 """

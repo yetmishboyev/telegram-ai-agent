@@ -250,6 +250,9 @@ class ChannelPost(Base):
     telegram_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     post_type: Mapped[str] = mapped_column(String(32), nullable=False)  # educational / news
     topic: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    # Yangilik postining mavzu kategoriyasi (mahsulot/tadqiqot/biznes/...).
+    # Curation shu tarixga qarab ketma-ket bir xil temani tanlamaydi.
+    category: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     text_preview: Mapped[str] = mapped_column(String(512), nullable=False)
     views: Mapped[int] = mapped_column(Integer, default=0)
     reactions: Mapped[int] = mapped_column(Integer, default=0)

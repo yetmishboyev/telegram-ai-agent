@@ -13,9 +13,11 @@ def test_is_fresh_recent_and_old():
     now = datetime.now(timezone.utc)
     assert news_fetcher._is_fresh(format_datetime(now - timedelta(hours=5))) is True
     assert news_fetcher._is_fresh(format_datetime(now - timedelta(hours=100))) is False
-    # parse bo'lmaydigan sana — item tashlanmaydi
-    assert news_fetcher._is_fresh("g'alati sana") is True
-    assert news_fetcher._is_fresh("") is True
+    # Sanasi yo'q/o'qilmaydigan item TASHLANADI — barcha feedlar pubDate beradi,
+    # sana yo'qligi feed buzilganini bildiradi va eskirgan yangilik qayta-qayta
+    # tanlanishiga olib kelardi.
+    assert news_fetcher._is_fresh("g'alati sana") is False
+    assert news_fetcher._is_fresh("") is False
 
 
 @pytest.mark.asyncio
