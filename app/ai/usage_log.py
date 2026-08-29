@@ -37,8 +37,7 @@ def extract_usage(response) -> dict:
 
 
 async def _write(
-    agent: str, model: str, tier: str, latency_ms: int, tokens: dict,
-    error: str | None, extra_fields: dict | None = None,
+    agent: str, model: str, tier: str, latency_ms: int, tokens: dict, error: str | None
 ) -> None:
     from app.database.models import AgentLog
     from app.database.session import AsyncSessionLocal
@@ -53,7 +52,6 @@ async def _write(
         "latency_ms": latency_ms,
         "cost_usd": cost,
         **tokens,
-        **(extra_fields or {}),
     }
     if error:
         extra["error"] = error[:500]
@@ -80,17 +78,12 @@ def record(
     latency_ms: int,
     tokens: dict | None = None,
     error: str | None = None,
-    extra: dict | None = None,
 ) -> None:
-    """Chaqiruv hisobini fon vazifasi sifatida yozadi (hech qachon ko'tarilmaydi).
-
-    `extra` — LLM bo'lmagan chaqiruvlar uchun qo'shimcha o'lchovlar
-    (masalan transkripsiyada ovoz uzunligi).
-    """
+    """Chaqiruv hisobini fon vazifasi sifatida yozadi (hech qachon ko'tarilmaydi)."""
 
     async def _safe() -> None:
         try:
-            await _write(agent, model, tier, latency_ms, tokens or {}, error, extra)
+            await _write(agent, model, tier, latency_ms, tokens or {}, error)
         except Exception as e:  # hisob yuritish asosiy oqimni buzmasin
             logger.debug(f"LLM hisobini yozishda xato: {e}")
 

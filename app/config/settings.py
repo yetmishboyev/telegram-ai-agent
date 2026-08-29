@@ -36,21 +36,6 @@ class Settings(BaseSettings):
     anthropic_model_fast: str = ""
     anthropic_model_deep: str = ""
 
-    # --- Ovoz transkripsiyasi ---
-    # Claude audio qabul qilmaydi, shuning uchun bu alohida provayder.
-    # AI_PROVIDER=anthropic bo'lsa ham OPENAI_API_KEY kerak; bo'lmasa ovozli
-    # xabarlar eski yo'l bilan (yorliq bilan) qayta ishlanadi.
-    voice_enabled: bool = True
-    voice_provider: Literal["openai", "none"] = "openai"
-    voice_model: str = "whisper-1"
-    # Bo'sh = Whisper tilni o'zi aniqlaydi. "uz" majburlash o'zbekcha
-    # aniqlikni oshirishi mumkin, lekin ruscha/inglizcha ovozni buzadi —
-    # qaysi biri yaxshiroq ekani o'lchangandan keyin ma'lum bo'ladi
-    # (scripts/check_transcription.py).
-    voice_language: str = ""
-    # Uzun ovozli xabar ham pul, ham kechikish — chegara qo'yiladi
-    voice_max_duration_seconds: int = 300
-
     # --- Database ---
     database_url: str = Field(..., description="PostgreSQL asyncpg URL")
     database_echo: bool = False

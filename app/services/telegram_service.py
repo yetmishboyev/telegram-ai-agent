@@ -137,16 +137,6 @@ class TelegramService:
                     text = f"{text}\n{img_part}" if text else img_part
                 elif not text:
                     text = self._media_label(msg_type)
-            elif msg_type == MessageType.VOICE:
-                # Ovozni matnga aylantirib odatiy quvurga uzatamiz — shunda
-                # maxfiy filtr, guardrails, klassifikatsiya va FAQ transkript
-                # ustida ham ishlaydi. Transkripsiya bo'lmasa eski yorliq.
-                transcript = await self._transcribe_voice(event.message)
-                if transcript:
-                    voice_part = f"[Ovoz matni: {transcript}]"
-                    text = f"{text}\n{voice_part}" if text else voice_part
-                elif not text:
-                    text = self._media_label(msg_type)
             elif msg_type == MessageType.DOCUMENT:
                 # Fayl nomi egaga yuboriladigan bildirishnomada ko'rinsin
                 # ("CV_Aliyev.pdf" — "📎 Fayl yuborildi" dan foydaliroq).
@@ -248,52 +238,6 @@ class TelegramService:
         except Exception as e:
             logger.error(f"Rasmni tavsiflashda xato: {e}")
             return None
-
-    async def _transcribe_voice(self, message) -> str | None:
-        """Ovozli xabarni yuklab, matnga aylantiradi (xato bo'lsa None).
-
-        Fayl serverga saqlanmaydi — baytlar xotirada qoladi va transkripsiyadan
-        keyin yo'qoladi. Bu hujjatlar bo'yicha qabul qilingan qaror bilan bir xil.
-        """
-        from app.ai.transcriber import transcriber
-        if not transcriber.is_available():
-            return None
-
-        # Uzunlik yuklab olishdan OLDIN tekshiriladi — aks holda 30 daqiqalik
-        # ovoz to'liq xotiraga tortilib, keyin tashlanardi.
-        duration = self._audio_duration(message)
-        if duration and duration > settings.voice_max_duration_seconds:
-            logger.info(
-                f"Ovozli xabar juda uzun ({duration:.0f}s) — yuklab olinmadi"
-            )
-            return None
-
-        try:
-            audio = await message.download_media(file=bytes)
-            if not audio:
-                return None
-            return await transcriber.transcribe(
-                audio,
-                mime=self._audio_mime(message),
-                duration_sec=duration,
-            )
-        except Exception as e:
-            logger.error(f"Ovozni matnga aylantirishda xato: {e}")
-            return None
-
-    @staticmethod
-    def _audio_mime(message) -> str | None:
-        doc = getattr(message, "document", None)
-        return getattr(doc, "mime_type", None) if doc is not None else None
-
-    @staticmethod
-    def _audio_duration(message) -> float | None:
-        """Ovoz uzunligi (soniya) — uzun xabarlarni kesish uchun."""
-        doc = getattr(message, "document", None)
-        for attr in (getattr(doc, "attributes", None) or []):
-            if isinstance(attr, DocumentAttributeAudio):
-                return getattr(attr, "duration", None)
-        return None
 
     @staticmethod
     def _image_mime(message) -> str:

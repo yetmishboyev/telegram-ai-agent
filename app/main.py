@@ -115,15 +115,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Schedulerda xato: {e}")
 
-    # Ovoz transkripsiyasi holatini bildiramiz — kalit yo'qligi jimgina
-    # o'tib ketmasin, aks holda ovozli xabarlar sababsiz javobsiz qolgandek
-    # ko'rinadi.
-    from app.ai.transcriber import transcriber
-    if transcriber.is_available():
-        logger.info(f"Ovoz transkripsiyasi yoqilgan: {settings.voice_model} ({settings.voice_language})")
-    else:
-        logger.warning("Ovoz transkripsiyasi O'CHIQ — ovozli xabarlar matnga aylantirilmaydi")
-
     # Uslub namunalarini tozalash (fon vazifasi)
     purge_task = asyncio.create_task(purge_stale_style_samples())
 
