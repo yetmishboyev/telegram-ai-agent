@@ -8,6 +8,7 @@ import base64
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.config import settings
 
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -20,6 +21,8 @@ _PROMPT = (
 
 
 class VisionAgent(BaseAgent):
+
+    tier = ModelTier.BALANCED
     async def run(self, *args, **kwargs) -> str | None:
         return await self.describe(*args, **kwargs)
 
@@ -41,6 +44,13 @@ class VisionAgent(BaseAgent):
             return None
 
     async def _describe_anthropic(self, b64: str, media_type: str) -> str:
+        # Rasm bloklari `_call_llm` imzosiga sig'maydi, shuning uchun chaqiruv
+        # to'g'ridan-to'g'ri. Hisob yuritish esa qo'lda qo'shiladi — aks holda
+        # vision xarajati o'lchovdan tushib qolardi.
+        import time
+        from app.ai import usage_log
+
+        started = time.perf_counter()
         response = await self._client.messages.create(
             model=self._model,
             max_tokens=400,
@@ -54,7 +64,12 @@ class VisionAgent(BaseAgent):
                 ],
             }],
         )
-        return response.content[0].text
+        usage_log.record(
+            agent=self._agent_name, model=self._model, tier=self.tier.value,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            tokens=usage_log.extract_usage(response),
+        )
+        return self._first_text(response)
 
     async def _describe_openai(self, b64: str, media_type: str) -> str:
         response = await self._client.chat.completions.create(

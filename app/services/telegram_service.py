@@ -1,5 +1,6 @@
 import asyncio
 import random
+from collections import deque
 from pathlib import Path
 from loguru import logger
 
@@ -8,6 +9,7 @@ from telethon.tl.types import (
     User as TelegramUser,
     PeerUser,
     DocumentAttributeAudio,
+    DocumentAttributeSticker,
     DocumentAttributeVideo,
 )
 
@@ -23,6 +25,14 @@ SESSION_PATH = Path("sessions") / settings.telegram_session_name
 
 OWNER_ACTIVE_TTL = 600    # 10 daqiqa — owner yozgandan keyin AI javob bermaydi
 DEBOUNCE_SECONDS = 5      # Bir nechta xabar kelganda shu vaqt kutiladi
+
+# Agent o'zi yuborgan javoblar chiquvchi xabar sifatida ham qaytib keladi.
+# Ular "ega yozdi" deb hisoblansa ikki zarar bo'lardi: (1) agent o'z javobidan
+# keyin o'sha chatda OWNER_ACTIVE_TTL davomida jim qolardi, (2) o'z matnini
+# eganing uslub namunasi sifatida o'rganib, uslub asta-sekin o'ziga qarab
+# siljib ketardi. Shuning uchun yuborilgan xabar id lari eslab qolinadi.
+AGENT_SENT_MEMORY = 200        # eslab qolinadigan xabar id lari soni
+AGENT_SEND_GUARD_SECONDS = 15  # id qaytib kelgunicha chat bo'yicha himoya oynasi
 
 
 class TelegramService:
@@ -40,6 +50,11 @@ class TelegramService:
         self._pending: dict[int, list] = {}
         # chat_id → debounce task
         self._debounce_tasks: dict[int, asyncio.Task] = {}
+        # Agent yuborgan xabarlar id si (eng eskisi avtomatik siqib chiqariladi)
+        self._agent_sent_ids: deque[int] = deque(maxlen=AGENT_SENT_MEMORY)
+        # Hozir yuborilayotgan chatlar — id hali ma'lum bo'lmagan oniy oraliq
+        # uchun (update handler send_message qaytishidan oldin ishlashi mumkin)
+        self._sending_chats: set[int] = set()
 
     async def start(self) -> None:
         await self._client.connect()
@@ -56,6 +71,10 @@ class TelegramService:
 
         @self._client.on(events.NewMessage(outgoing=True, func=lambda e: e.is_private))
         async def on_outgoing_message(event: events.NewMessage.Event) -> None:
+            # Agentning O'Z javobi — ega yozgani hisoblanmaydi
+            if self._is_agent_message(event):
+                logger.debug(f"Chiquvchi xabar agentniki ({event.chat_id}) — o'tkazib yuborildi")
+                return
             await self._mark_owner_active(event.chat_id)
             if event.message.text:
                 asyncio.create_task(self._learn_style(event.message.text))
@@ -118,11 +137,26 @@ class TelegramService:
                     text = f"{text}\n{img_part}" if text else img_part
                 elif not text:
                     text = self._media_label(msg_type)
+            elif msg_type == MessageType.VOICE:
+                # Ovozni matnga aylantirib odatiy quvurga uzatamiz — shunda
+                # maxfiy filtr, guardrails, klassifikatsiya va FAQ transkript
+                # ustida ham ishlaydi. Transkripsiya bo'lmasa eski yorliq.
+                transcript = await self._transcribe_voice(event.message)
+                if transcript:
+                    voice_part = f"[Ovoz matni: {transcript}]"
+                    text = f"{text}\n{voice_part}" if text else voice_part
+                elif not text:
+                    text = self._media_label(msg_type)
             elif msg_type == MessageType.DOCUMENT:
                 # Fayl nomi egaga yuboriladigan bildirishnomada ko'rinsin
                 # ("CV_Aliyev.pdf" — "📎 Fayl yuborildi" dan foydaliroq).
                 label = self._document_label(event.message)
                 text = f"{text}\n{label}" if text else label
+            elif msg_type == MessageType.STICKER:
+                # Stiker javob talab qilmaydi — unga matn bilan javob berish
+                # g'alati ko'rinadi. Yorliq ham qo'shilmaydi, shunda faqat
+                # stiker kelgan batch umuman qayta ishlanmaydi.
+                text = ""
             elif not text and event.message.media:
                 text = self._media_label(msg_type)
 
@@ -215,6 +249,42 @@ class TelegramService:
             logger.error(f"Rasmni tavsiflashda xato: {e}")
             return None
 
+    async def _transcribe_voice(self, message) -> str | None:
+        """Ovozli xabarni yuklab, matnga aylantiradi (xato bo'lsa None).
+
+        Fayl serverga saqlanmaydi — baytlar xotirada qoladi va transkripsiyadan
+        keyin yo'qoladi. Bu hujjatlar bo'yicha qabul qilingan qaror bilan bir xil.
+        """
+        from app.ai.transcriber import transcriber
+        if not transcriber.is_available():
+            return None
+        try:
+            audio = await message.download_media(file=bytes)
+            if not audio:
+                return None
+            return await transcriber.transcribe(
+                audio,
+                mime=self._audio_mime(message),
+                duration_sec=self._audio_duration(message),
+            )
+        except Exception as e:
+            logger.error(f"Ovozni matnga aylantirishda xato: {e}")
+            return None
+
+    @staticmethod
+    def _audio_mime(message) -> str | None:
+        doc = getattr(message, "document", None)
+        return getattr(doc, "mime_type", None) if doc is not None else None
+
+    @staticmethod
+    def _audio_duration(message) -> float | None:
+        """Ovoz uzunligi (soniya) — uzun xabarlarni kesish uchun."""
+        doc = getattr(message, "document", None)
+        for attr in (getattr(doc, "attributes", None) or []):
+            if isinstance(attr, DocumentAttributeAudio):
+                return getattr(attr, "duration", None)
+        return None
+
     @staticmethod
     def _image_mime(message) -> str:
         doc = getattr(message, "document", None)
@@ -230,6 +300,38 @@ class TelegramService:
             await style_learner.learn(text)
         except Exception as e:
             logger.debug(f"Style learning xatosi: {e}")
+
+    # ─── agentning o'z xabarlarini ajratish ───────────────────────────────────
+
+    def _is_agent_message(self, event) -> bool:
+        """Chiquvchi xabarni agentning o'zi yuborganmi."""
+        return (
+            event.chat_id in self._sending_chats
+            or getattr(event.message, "id", None) in self._agent_sent_ids
+        )
+
+    async def _send_as_agent(self, chat_id: int, text: str, reply_to: int | None = None):
+        """Agent nomidan xabar yuboradi va uni "ega yozdi" deb belgilanishdan saqlaydi.
+
+        Chat id himoya to'plamiga yuborishdan OLDIN qo'shiladi: Telethon
+        chiquvchi update'ni `send_message` qaytishidan oldin ham yetkazishi
+        mumkin, bunda xabar id si hali ma'lum bo'lmaydi. Oyna qisqa vaqtdan
+        keyin yopiladi — ega o'sha chatda qo'lda yozsa, u yana hisobga olinadi.
+        """
+        self._sending_chats.add(chat_id)
+        try:
+            message = await self._client.send_message(chat_id, text, reply_to=reply_to)
+            message_id = getattr(message, "id", None)
+            if message_id is not None:
+                self._agent_sent_ids.append(message_id)
+            return message
+        finally:
+            try:
+                asyncio.get_running_loop().call_later(
+                    AGENT_SEND_GUARD_SECONDS, self._sending_chats.discard, chat_id
+                )
+            except RuntimeError:  # ishlayotgan loop yo'q (test muhiti)
+                self._sending_chats.discard(chat_id)
 
     async def _mark_owner_active(self, chat_id: int) -> None:
         r = await get_redis()
@@ -254,7 +356,7 @@ class TelegramService:
             return
 
         try:
-            await self._client.send_message(
+            await self._send_as_agent(
                 event.chat_id,
                 response,
                 reply_to=event.message.id,
@@ -274,14 +376,19 @@ class TelegramService:
         if "Photo" in media_class:
             return MessageType.IMAGE
         if "Document" in media_class and message.document:
-            for attr in message.document.attributes:
+            attributes = message.document.attributes or []
+            # Stiker ham MessageMediaDocument bo'lib keladi — shuning uchun u
+            # BIRINCHI tekshiriladi: aks holda oddiy stiker DOCUMENT bo'lib
+            # "hujjat qabul qilindi" javobini olardi, video-stiker (.webm) esa
+            # DocumentAttributeVideo tufayli VIDEO deb belgilanardi.
+            if any(isinstance(attr, DocumentAttributeSticker) for attr in attributes):
+                return MessageType.STICKER
+            for attr in attributes:
                 if isinstance(attr, DocumentAttributeAudio):
                     return MessageType.VOICE if attr.voice else MessageType.OTHER
                 if isinstance(attr, DocumentAttributeVideo):
                     return MessageType.VIDEO
             return MessageType.DOCUMENT
-        if "Sticker" in str(media_class):
-            return MessageType.STICKER
         return MessageType.OTHER
 
     def is_ready(self) -> bool:
@@ -294,8 +401,18 @@ class TelegramService:
         """
         return self._me is not None and self._client.is_connected()
 
-    async def send_message(self, chat_id: int, text: str) -> None:
-        await self._client.send_message(chat_id, text)
+    async def send_message(self, chat_id: int, text: str, as_agent: bool = False) -> None:
+        """Userbot orqali xabar yuboradi.
+
+        `as_agent=True` — matnni agent generatsiya qilgan (masalan tizim
+        ogohlantirishi): u eganing uslub namunasi sifatida o'rganilmasligi
+        kerak. Relay uchun `False` qoladi — u yerdagi matnni ega yozadi,
+        demak owner-active belgisi ham, uslub o'rganish ham o'rinli.
+        """
+        if as_agent:
+            await self._send_as_agent(chat_id, text)
+        else:
+            await self._client.send_message(chat_id, text)
 
     async def run_until_disconnected(self) -> None:
         while True:

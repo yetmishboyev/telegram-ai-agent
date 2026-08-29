@@ -189,6 +189,55 @@ async def test_rebuild_card_asks_llm_to_ignore_content():
     save.assert_awaited_once()
 
 
+# ─── eski namunalarni tozalash ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_purge_removes_only_unlearnable_samples():
+    """Darvoza qo'shilishidan OLDIN saqlangan hujjat so'rovlari o'chiriladi."""
+    stored = {
+        "ids": ["ok1", "bad1", "ok2", "bad2"],
+        "documents": [
+            "Assalomu alaykum, ertaga uchrashamizmi?",
+            "Manga CV sini tashab bera olasizmi?",
+            "Yaxshi, men buni ko'rib chiqaman",
+            "Obyektivkangizni yuboring iltimos",
+        ],
+    }
+    with patch("app.ai.agents.style_learner.chroma_client.get", AsyncMock(return_value=stored)), \
+         patch("app.ai.agents.style_learner.chroma_client.delete", AsyncMock()) as mock_delete, \
+         patch.object(style_learner, "_discard_card", AsyncMock()) as discard, \
+         patch.object(style_learner, "rebuild_card", AsyncMock()) as rebuild:
+        removed = await style_learner.purge_unlearnable()
+
+    assert removed == 2
+    assert mock_delete.call_args.kwargs["ids"] == ["bad1", "bad2"]
+    discard.assert_awaited_once()   # eski karta o'sha namunalardan qurilgan edi
+    rebuild.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_purge_does_nothing_when_all_samples_are_clean():
+    stored = {
+        "ids": ["a", "b"],
+        "documents": ["Ertaga soat 10 da bo'lamiz", "Rahmat, juda foydali bo'ldi"],
+    }
+    with patch("app.ai.agents.style_learner.chroma_client.get", AsyncMock(return_value=stored)), \
+         patch("app.ai.agents.style_learner.chroma_client.delete", AsyncMock()) as mock_delete, \
+         patch.object(style_learner, "rebuild_card",
+                      AsyncMock(side_effect=AssertionError("karta qayta qurilmasligi kerak"))):
+        removed = await style_learner.purge_unlearnable()
+
+    assert removed == 0
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_purge_survives_chroma_failure():
+    with patch("app.ai.agents.style_learner.chroma_client.get",
+               AsyncMock(side_effect=RuntimeError("chroma yo'q"))):
+        assert await style_learner.purge_unlearnable() == 0
+
+
 @pytest.mark.asyncio
 async def test_rebuild_card_skipped_when_too_few_samples():
     with patch("app.ai.agents.style_learner.chroma_client.get",

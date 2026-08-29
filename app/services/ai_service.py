@@ -4,6 +4,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.guardrails import check_input, check_output, get_manipulation_reply, get_lang as _detect_lang
+from app.ai.job_inquiry import is_job_inquiry, get_job_inquiry_reply
 
 from app.ai.agents.analysis_agent import analysis_agent, MessageAnalysis
 from app.ai.agents.classifier_agent import classifier_agent, MessageCategory
@@ -58,27 +59,14 @@ def _luhn_valid(digits: str) -> bool:
         total += n
     return total % 10 == 0
 
-# Shaxsni tasdiqlovchi hujjat ma'lumotlari — ega odamlardan CV va obyektivka
-# so'raydi, shuning uchun bular "yubormang" deb rad etilmaydi: qabul qilinadi,
-# egaga bildirishnoma yuboriladi. Qolgan turlar (parol, karta, OTP...) sir
-# hisoblanadi va ular uchun ogohlantirish javobi qoladi.
-_IDENTITY_TYPES = {"passport", "jshshir"}
-
-_IDENTITY_ACK_REPLIES = {
-    "uz": (
-        "Ma'lumotlaringiz qabul qilindi va Shaxzodbek Yetmishboyevga yetkazildi. "
-        "Xavfsizlik uchun men ularni o'qimadim va saqlamadim — javobni "
-        "Shaxzodbekning o'zi beradi."
-    ),
-    "ru": (
-        "Ваши данные получены и переданы Шахзодбеку Йетмишбоеву. "
-        "В целях безопасности я их не читал и не сохранял — ответит он сам."
-    ),
-    "en": (
-        "Your details have been received and passed on to Shaxzodbek Yetmishboyev. "
-        "For security reasons I did not read or store them — he will reply himself."
-    ),
-}
+# Pasport/JSHSHIR kabi ma'lumotlar ham SIR hisoblanadi va ogohlantirish
+# javobini oladi (2026-08-29). Ilgari ular istisno qilingan edi — "ega
+# odamlardan obyektivka so'raydi" degan noto'g'ri taxminga ko'ra. Ega hech
+# kimdan hujjat so'ramaydi, shuning uchun chatga tashlangan pasport raqami
+# kutilmagan ma'lumot: to'g'ri javob — uni ulashmaslikni aytish.
+#
+# Ish o'rni so'ragan odam CV sini FAYL sifatida yuboradi — u `MessageType.DOCUMENT`
+# tarmog'idan o'tadi va odatdagidek qabul qilinadi (`_DOCUMENT_ACK_REPLIES`).
 
 # Hujjat (CV, obyektivka va h.k.) — mazmuni o'qilmaydi, lekin e'tiborsiz ham
 # qolmaydi: foydalanuvchi tasdiq oladi, ega bildirishnoma oladi.
@@ -168,11 +156,9 @@ class AIService:
         # 2b. Maxfiy ma'lumot filtri — Claude API ga yuborilmaydi
         sensitive_type = _detect_sensitive(text)
         if sensitive_type:
-            is_identity = sensitive_type in _IDENTITY_TYPES
             logger.warning(
                 f"Maxfiy ma'lumot aniqlandi [{sensitive_type}]: user={telegram_id} — "
                 f"API ga yuborilmadi"
-                + (" (shaxsiy hujjat — egaga yo'naltirildi)" if is_identity else "")
             )
             msg = await message_repo.create(
                 db=db, user_id=user.id, role=MessageRole.USER,
@@ -181,21 +167,7 @@ class AIService:
                 telegram_message_id=telegram_message_id,
             )
             lang = _detect_lang(text)
-            if is_identity:
-                # Ega hujjat so'ragan bo'lishi mumkin — xabar yo'qolib ketmasligi
-                # uchun egaga bildiramiz. Matnning O'ZI bildirishnomaga
-                # qo'shilmaydi: u allaqachon eganing Telegramida, takrorlash
-                # shaxsiy ma'lumotni yana bir kanaldan o'tkazgan bo'lardi.
-                reply = _IDENTITY_ACK_REPLIES.get(lang, _IDENTITY_ACK_REPLIES["uz"])
-                asyncio.create_task(
-                    self._notify_owner(
-                        user, text,
-                        "Shaxsiy hujjat ma'lumotlarini yubordi (matn ko'rsatilmadi)",
-                        include_preview=False,
-                    )
-                )
-            else:
-                reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
+            reply = _SENSITIVE_REPLIES.get(lang, _SENSITIVE_REPLIES["uz"])
             msg.agent_response = reply
             await db.flush()
             return msg, reply
@@ -325,6 +297,20 @@ class AIService:
             await db.flush()
             await memory_manager.add_exchange(db, user, text, faq_answer)
             return msg, faq_answer
+
+        # 7c. Ish o'rni so'rovi — agent CV/obyektivka so'ray oladigan YAGONA
+        # holat. Bu tarmoq eskalatsiyadan oldin turadi: eskalatsiya agenti
+        # umumiy "ko'rib chiqadi" javobini berardi va hujjat so'ralmasdi.
+        if is_job_inquiry(text):
+            reply = get_job_inquiry_reply(lang)
+            logger.info(f"Ish o'rni so'rovi: user={telegram_id}")
+            asyncio.create_task(
+                self._notify_owner(user, text, "Ish o'rni haqida so'radi")
+            )
+            msg.agent_response = reply
+            await db.flush()
+            await memory_manager.add_exchange(db, user, text, reply)
+            return msg, reply
 
         # 8. IMPORTANT — jadval bilan dinamik javob + egaga bildirishnoma
         if classification.category == MessageCategory.IMPORTANT or \

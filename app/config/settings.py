@@ -26,7 +26,23 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     openai_model: str = "gpt-4o"
-    anthropic_model: str = "claude-sonnet-4-6"
+    # Anthropic modellari qatlam bo'yicha (app/ai/models.py — ModelTier).
+    # `anthropic_model` asosiy (balanced) qatlam; qolgan ikkitasi berilmasa
+    # o'shanga qaytadi, ya'ni bitta modelli sozlash ham ishlayveradi.
+    anthropic_model: str = "claude-sonnet-5"
+    anthropic_model_fast: str = "claude-haiku-4-5"
+    anthropic_model_deep: str = "claude-opus-5"
+
+    # --- Ovoz transkripsiyasi ---
+    # Claude audio qabul qilmaydi, shuning uchun bu alohida provayder.
+    # AI_PROVIDER=anthropic bo'lsa ham OPENAI_API_KEY kerak; bo'lmasa ovozli
+    # xabarlar eski yo'l bilan (yorliq bilan) qayta ishlanadi.
+    voice_enabled: bool = True
+    voice_provider: Literal["openai", "none"] = "openai"
+    voice_model: str = "whisper-1"
+    voice_language: str = "uz"
+    # Uzun ovozli xabar ham pul, ham kechikish — chegara qo'yiladi
+    voice_max_duration_seconds: int = 300
 
     # --- Database ---
     database_url: str = Field(..., description="PostgreSQL asyncpg URL")
@@ -78,6 +94,20 @@ class Settings(BaseSettings):
     @property
     def active_model(self) -> str:
         return self.openai_model if self.ai_provider == "openai" else self.anthropic_model
+
+    def model_for_tier(self, tier: str) -> str:
+        """Qatlam nomini aniq model ID'siga aylantiradi.
+
+        OpenAI yo'lida qatlam bo'linishi yo'q — bitta model qaytadi.
+        Anthropic yo'lida bo'sh qoldirilgan qatlam asosiy modelga qaytadi.
+        """
+        if self.ai_provider == "openai":
+            return self.openai_model
+        if tier == "fast":
+            return self.anthropic_model_fast or self.anthropic_model
+        if tier == "deep":
+            return self.anthropic_model_deep or self.anthropic_model
+        return self.anthropic_model
 
     @property
     def active_api_key(self) -> str:

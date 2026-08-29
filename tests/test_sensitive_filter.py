@@ -11,9 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.database.models import MessageType
-from app.services.ai_service import (
-    ai_service, _detect_sensitive, _luhn_valid, _IDENTITY_TYPES,
-)
+from app.services.ai_service import ai_service, _detect_sensitive, _luhn_valid
 
 
 class TestDetectsKnownCategories:
@@ -73,51 +71,27 @@ class TestLuhnValid:
         assert _luhn_valid("123456789012345678") is False
 
 
-class TestIdentityVsSecret:
-    """Ega odamlardan CV/obyektivka so'raydi — shaxsni tasdiqlovchi ma'lumot
-    rad etilmaydi, lekin parol/karta/OTP uchun ogohlantirish qoladi."""
-
-    def test_identity_types_are_document_data_only(self):
-        assert _IDENTITY_TYPES == {"passport", "jshshir"}
-
-    @pytest.mark.parametrize("text", [
-        "password: mySecret123",
-        "cvv: 123",
-        "otp: 483920",
-        "Mening kartam: 4111 1111 1111 1111",
-    ])
-    def test_secrets_are_not_treated_as_identity(self, text):
-        assert _detect_sensitive(text) not in _IDENTITY_TYPES
-
-
 @pytest.mark.asyncio
-async def test_identity_data_is_accepted_and_owner_notified(db_session):
-    """Obyektivka matni: foydalanuvchi tasdiq oladi, ega bildirishnoma oladi."""
+@pytest.mark.parametrize("telegram_id,text", [
+    # Ega hech kimdan hujjat so'ramaydi — pasport/JSHSHIR ham kutilmagan
+    # ma'lumot, ular ham ogohlantirish oladi (2026-08-29).
+    (900050001, "Obyektivkam: Aliyev Vali, pasport AA1234567, 1995-yil"),
+    (900050002, "JSHSHIR: 12345678901234"),
+    (900050004, "parol: qwerty123"),
+    (900050005, "Mening kartam: 4111 1111 1111 1111"),
+])
+async def test_sensitive_text_gets_the_warning_and_no_notification(
+    db_session, telegram_id, text
+):
     with patch.object(ai_service, "_notify_owner", AsyncMock()) as notify:
         msg, reply = await ai_service.process_message(
-            db=db_session, telegram_id=900050001,
-            text="Obyektivkam: Aliyev Vali, pasport AA1234567, 1995-yil",
+            db=db_session, telegram_id=telegram_id, text=text,
         )
         await asyncio.sleep(0)  # create_task ishga tushishi uchun
 
-    assert "qabul qilindi" in reply
-    assert "ulashmang" not in reply                     # ogohlantirish emas
-    assert msg.content == "[MAXFIY MA'LUMOT — saqlanmadi]"  # matn saqlanmaydi
-    notify.assert_called_once()
-    # Matn bildirishnomada takrorlanmaydi — u allaqachon eganing Telegramida
-    assert notify.call_args.kwargs["include_preview"] is False
-
-
-@pytest.mark.asyncio
-async def test_password_still_gets_the_warning(db_session):
-    """Sir (parol) uchun eski xulq saqlanadi — bu ega so'ramaydigan ma'lumot."""
-    with patch.object(ai_service, "_notify_owner", AsyncMock()) as notify:
-        _, reply = await ai_service.process_message(
-            db=db_session, telegram_id=900050002, text="parol: qwerty123",
-        )
-        await asyncio.sleep(0)
-
     assert "ulashmang" in reply
+    assert "qabul qilindi" not in reply
+    assert msg.content == "[MAXFIY MA'LUMOT — saqlanmadi]"  # matn saqlanmaydi
     notify.assert_not_called()
 
 

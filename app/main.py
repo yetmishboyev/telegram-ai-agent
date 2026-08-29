@@ -36,6 +36,21 @@ def configure_logging() -> None:
     )
 
 
+async def purge_stale_style_samples() -> None:
+    """Eski (sifat darvozasidan oldin saqlangan) uslub namunalarini tozalaydi.
+
+    Fon vazifasi sifatida chaqiriladi — ishga tushishni kechiktirmasligi va
+    ChromaDB javob bermasa ilovani yiqitmasligi kerak.
+    """
+    try:
+        from app.ai.agents.style_learner import style_learner
+        removed = await style_learner.purge_unlearnable()
+        if removed:
+            logger.info(f"Uslub namunalari tozalandi: {removed} ta o'chirildi")
+    except Exception as e:
+        logger.warning(f"Uslub namunalarini tozalashda xato: {e}")
+
+
 async def create_admin_if_not_exists() -> None:
     """Faqat admin_users jadvali BUTUNLAY bo'sh bo'lsa, .env dagi boshlang'ich adminni yaratadi.
 
@@ -100,12 +115,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Schedulerda xato: {e}")
 
+    # Ovoz transkripsiyasi holatini bildiramiz — kalit yo'qligi jimgina
+    # o'tib ketmasin, aks holda ovozli xabarlar sababsiz javobsiz qolgandek
+    # ko'rinadi.
+    from app.ai.transcriber import transcriber
+    if transcriber.is_available():
+        logger.info(f"Ovoz transkripsiyasi yoqilgan: {settings.voice_model} ({settings.voice_language})")
+    else:
+        logger.warning("Ovoz transkripsiyasi O'CHIQ — ovozli xabarlar matnga aylantirilmaydi")
+
+    # Uslub namunalarini tozalash (fon vazifasi)
+    purge_task = asyncio.create_task(purge_stale_style_samples())
+
     yield
 
     # Cleanup
     logger.info("Agent to'xtatilmoqda...")
     scheduler_service.stop()
-    for task in [telegram_task, bot_task]:
+    for task in [telegram_task, bot_task, purge_task]:
         if task:
             task.cancel()
             try:
