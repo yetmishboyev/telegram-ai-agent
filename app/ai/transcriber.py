@@ -94,12 +94,14 @@ class Transcriber:
 
         started = time.perf_counter()
         try:
-            response = await self._get_client().audio.transcriptions.create(
-                model=settings.voice_model,
-                file=stream,
-                language=settings.voice_language,
-                response_format="text",
-            )
+            kwargs = {
+                "model": settings.voice_model,
+                "file": stream,
+                "response_format": "text",
+            }
+            if settings.voice_language:
+                kwargs["language"] = settings.voice_language
+            response = await self._get_client().audio.transcriptions.create(**kwargs)
         except Exception as e:
             logger.error(f"Transkripsiyada xato: {e}")
             usage_log.record(

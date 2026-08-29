@@ -86,7 +86,7 @@ def test_filename_derived_from_mime(mime, expected):
 # ─── transkripsiya xulqi ───────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_returns_text_and_sends_language():
+async def test_returns_text_and_names_the_file_by_format():
     t = Transcriber()
     create = AsyncMock(return_value="Assalomu alaykum, ertaga uchrashamizmi?")
     with patch.object(t, "is_available", return_value=True), \
@@ -96,8 +96,36 @@ async def test_returns_text_and_sends_language():
         text = await t.transcribe(b"audio", mime="audio/ogg", duration_sec=5)
 
     assert text == "Assalomu alaykum, ertaga uchrashamizmi?"
-    assert create.call_args.kwargs["language"] == "uz"
     assert create.call_args.kwargs["file"].name == "voice.ogg"
+
+
+@pytest.mark.asyncio
+async def test_language_is_auto_detected_by_default():
+    """Auditoriya ko'p tilli — ruscha ovozni o'zbekcha deb dekodlamaymiz."""
+    t = Transcriber()
+    create = AsyncMock(return_value="matn")
+    with patch.object(t, "is_available", return_value=True), \
+         patch.object(t, "_get_client") as client, \
+         patch("app.ai.usage_log.record"), \
+         patch("app.ai.transcriber.settings.voice_language", ""):
+        client.return_value.audio.transcriptions.create = create
+        await t.transcribe(b"audio")
+
+    assert "language" not in create.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_language_is_sent_when_explicitly_configured():
+    t = Transcriber()
+    create = AsyncMock(return_value="matn")
+    with patch.object(t, "is_available", return_value=True), \
+         patch.object(t, "_get_client") as client, \
+         patch("app.ai.usage_log.record"), \
+         patch("app.ai.transcriber.settings.voice_language", "uz"):
+        client.return_value.audio.transcriptions.create = create
+        await t.transcribe(b"audio")
+
+    assert create.call_args.kwargs["language"] == "uz"
 
 
 @pytest.mark.asyncio
@@ -148,6 +176,17 @@ async def test_object_response_shape_also_accepted():
 @pytest.mark.asyncio
 async def test_no_audio_bytes_returns_none():
     assert await transcriber.transcribe(b"") is None
+
+
+@pytest.mark.asyncio
+async def test_long_voice_is_not_even_downloaded():
+    """Chegara yuklab olishdan OLDIN — 30 daqiqalik ovoz xotiraga tortilmasin."""
+    msg = _voice_message(duration=10_000)
+    with patch("app.ai.transcriber.transcriber.is_available", return_value=True):
+        result = await telegram_service._transcribe_voice(msg)
+
+    assert result is None
+    msg.download_media.assert_not_awaited()
 
 
 # ─── quvurga ulanish ───────────────────────────────────────────────────────────

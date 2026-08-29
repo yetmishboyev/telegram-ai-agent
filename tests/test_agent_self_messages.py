@@ -43,7 +43,6 @@ async def test_sent_message_id_is_remembered():
         await telegram_service._send_as_agent(111, "javob matni")
 
     # Chat oynasi emas, aynan id bo'yicha tanilishini tekshiramiz
-    telegram_service._sending_chats.discard(111)
     assert telegram_service._is_agent_message(_event(111, 4242)) is True
     # Boshqa xabar (ega qo'lda yozgani) tegilmaydi
     assert telegram_service._is_agent_message(_event(111, 9999)) is False
@@ -79,8 +78,33 @@ async def test_send_message_marks_agent_text_only_when_asked():
         client.send_message = AsyncMock(return_value=SimpleNamespace(id=11))
         await telegram_service.send_message(444, "tizim ogohlantirishi", as_agent=True)
 
-    telegram_service._sending_chats.discard(444)
     assert telegram_service._is_agent_message(_event(444, 11)) is True
+
+
+@pytest.mark.asyncio
+async def test_guard_closes_as_soon_as_the_id_is_known():
+    """Ega agent javobidan keyin DARHOL yozsa, u ega sifatida tanilishi kerak.
+
+    Ilgari chat 15 soniya himoyalangan qolardi va shu vaqtdagi eganing
+    xabari "agentniki" deb hisoblanib, owner_active qo'yilmasdi.
+    """
+    with patch.object(telegram_service, "_client") as client:
+        client.send_message = AsyncMock(return_value=SimpleNamespace(id=500))
+        await telegram_service._send_as_agent(888, "agent javobi")
+
+    assert 888 not in telegram_service._sending_chats
+    # Eganing qo'lda yozgan xabari (boshqa id) endi to'g'ri tanilanadi
+    assert telegram_service._is_agent_message(_event(888, 501)) is False
+
+
+@pytest.mark.asyncio
+async def test_guard_stays_open_when_no_id_came_back():
+    """Id olinmasa tanish uchun boshqa belgi yo'q — oyna ochiq qoladi."""
+    with patch.object(telegram_service, "_client") as client:
+        client.send_message = AsyncMock(return_value=None)
+        await telegram_service._send_as_agent(889, "javob")
+
+    assert 889 in telegram_service._sending_chats
 
 
 @pytest.mark.asyncio

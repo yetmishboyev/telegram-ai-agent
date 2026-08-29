@@ -17,6 +17,11 @@ from app.ai.prompts.system_prompt import (
 from app.ai import schemas
 
 
+class _BadRequest(Exception):
+    """anthropic.BadRequestError o'rnini bosuvchi — status_code 400."""
+    status_code = 400
+
+
 class _Probe(BaseAgent):
     async def run(self, *a, **kw):
         return None
@@ -89,7 +94,7 @@ async def test_falls_back_to_plain_call_when_schema_rejected():
     async def flaky(**kwargs):
         calls.append(kwargs)
         if "format" in kwargs.get("output_config", {}):
-            raise RuntimeError("400 output_config.format qo'llab-quvvatlanmaydi")
+            raise _BadRequest("400 output_config.format qo'llab-quvvatlanmaydi")
         return _fake_response('{"ok": true}')
 
     text, _ = await _call(schemas.QUIZ_SCHEMA, create=AsyncMock(side_effect=flaky))
@@ -105,7 +110,7 @@ async def test_capability_is_disabled_after_first_rejection():
     """Ikkinchi chaqiruv sxemani umuman yubormaydi — har safar 2 so'rov ketmasin."""
     async def flaky(**kwargs):
         if "format" in kwargs.get("output_config", {}):
-            raise RuntimeError("400")
+            raise _BadRequest("400")
         return _fake_response()
 
     await _call(schemas.QUIZ_SCHEMA, create=AsyncMock(side_effect=flaky))
@@ -114,6 +119,42 @@ async def test_capability_is_disabled_after_first_rejection():
     _, create = await _call(schemas.QUIZ_SCHEMA)
     assert "format" not in create.call_args.kwargs.get("output_config", {})
     assert create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_transient_error_is_not_treated_as_schema_rejection():
+    """429/529 sxema muammosi emas — qayta urinilmaydi va imkoniyat o'chirilmaydi.
+
+    Aks holda API bo'g'ilayotgan paytda ikki barobar so'rov ketardi va bitta
+    tasodifiy nosozlik strukturali chiqishni butun jarayon uchun o'chirardi.
+    """
+    class Overloaded(Exception):
+        status_code = 529
+
+    create = AsyncMock(side_effect=Overloaded("overloaded"))
+    with pytest.raises(Overloaded):
+        await _call(schemas.QUIZ_SCHEMA, create=create)
+
+    assert create.await_count == 1, "vaqtinchalik xatoda qayta urinilmasin"
+    assert base_agent_module._structured_output_enabled() is True
+
+
+@pytest.mark.asyncio
+async def test_bad_request_is_treated_as_schema_rejection():
+    class BadRequest(Exception):
+        status_code = 400
+
+    calls = []
+
+    async def flaky(**kwargs):
+        calls.append(kwargs)
+        if "format" in kwargs.get("output_config", {}):
+            raise BadRequest("invalid output_config.format")
+        return _fake_response()
+
+    await _call(schemas.QUIZ_SCHEMA, create=AsyncMock(side_effect=flaky))
+    assert len(calls) == 2
+    assert base_agent_module._structured_output_enabled() is False
 
 
 @pytest.mark.asyncio

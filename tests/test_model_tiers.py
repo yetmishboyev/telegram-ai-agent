@@ -57,9 +57,21 @@ def test_tier_caps_effort(tier, temperature, expected):
 # ─── qatlam → model ────────────────────────────────────────────────────────────
 
 def test_tier_resolves_to_configured_model():
-    assert settings.model_for_tier("fast") == settings.anthropic_model_fast
-    assert settings.model_for_tier("balanced") == settings.anthropic_model
-    assert settings.model_for_tier("deep") == settings.anthropic_model_deep
+    with patch.object(settings, "anthropic_model", "asosiy"), \
+         patch.object(settings, "anthropic_model_fast", "tez"), \
+         patch.object(settings, "anthropic_model_deep", "chuqur"):
+        assert settings.model_for_tier("fast") == "tez"
+        assert settings.model_for_tier("balanced") == "asosiy"
+        assert settings.model_for_tier("deep") == "chuqur"
+
+
+def test_empty_tier_falls_back_to_main_model():
+    """Faqat ANTHROPIC_MODEL sozlangan o'rnatma deploydan keyin o'zgarmasin."""
+    with patch.object(settings, "anthropic_model", "asosiy"), \
+         patch.object(settings, "anthropic_model_fast", ""), \
+         patch.object(settings, "anthropic_model_deep", ""):
+        assert settings.model_for_tier("fast") == "asosiy"
+        assert settings.model_for_tier("deep") == "asosiy"
 
 
 def test_unknown_tier_falls_back_to_main_model():

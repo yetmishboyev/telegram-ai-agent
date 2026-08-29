@@ -258,6 +258,16 @@ class TelegramService:
         from app.ai.transcriber import transcriber
         if not transcriber.is_available():
             return None
+
+        # Uzunlik yuklab olishdan OLDIN tekshiriladi — aks holda 30 daqiqalik
+        # ovoz to'liq xotiraga tortilib, keyin tashlanardi.
+        duration = self._audio_duration(message)
+        if duration and duration > settings.voice_max_duration_seconds:
+            logger.info(
+                f"Ovozli xabar juda uzun ({duration:.0f}s) — yuklab olinmadi"
+            )
+            return None
+
         try:
             audio = await message.download_media(file=bytes)
             if not audio:
@@ -265,7 +275,7 @@ class TelegramService:
             return await transcriber.transcribe(
                 audio,
                 mime=self._audio_mime(message),
-                duration_sec=self._audio_duration(message),
+                duration_sec=duration,
             )
         except Exception as e:
             logger.error(f"Ovozni matnga aylantirishda xato: {e}")
@@ -315,23 +325,35 @@ class TelegramService:
 
         Chat id himoya to'plamiga yuborishdan OLDIN qo'shiladi: Telethon
         chiquvchi update'ni `send_message` qaytishidan oldin ham yetkazishi
-        mumkin, bunda xabar id si hali ma'lum bo'lmaydi. Oyna qisqa vaqtdan
-        keyin yopiladi — ega o'sha chatda qo'lda yozsa, u yana hisobga olinadi.
+        mumkin, bunda xabar id si hali ma'lum bo'lmaydi.
+
+        Id yozilishi bilanoq oyna DARHOL yopiladi. Ilgari u 15 soniya ochiq
+        turardi va shu vaqt ichida EGA o'zi yozgan xabar ham "agentniki" deb
+        hisoblanardi — ya'ni ega qo'lda javob bersa `owner_active` qo'yilmay,
+        agent keyingi xabarga baribir avtojavob berardi. Id va oyna orasida
+        `await` yo'q, shuning uchun poyga xavfi ham yo'q.
         """
         self._sending_chats.add(chat_id)
+        recorded = False
         try:
             message = await self._client.send_message(chat_id, text, reply_to=reply_to)
             message_id = getattr(message, "id", None)
             if message_id is not None:
                 self._agent_sent_ids.append(message_id)
+                recorded = True
             return message
         finally:
-            try:
-                asyncio.get_running_loop().call_later(
-                    AGENT_SEND_GUARD_SECONDS, self._sending_chats.discard, chat_id
-                )
-            except RuntimeError:  # ishlayotgan loop yo'q (test muhiti)
+            if recorded:
                 self._sending_chats.discard(chat_id)
+            else:
+                # Id olinmadi — tanish uchun boshqa belgi yo'q, shuning uchun
+                # oyna qisqa muddat ochiq qoladi.
+                try:
+                    asyncio.get_running_loop().call_later(
+                        AGENT_SEND_GUARD_SECONDS, self._sending_chats.discard, chat_id
+                    )
+                except RuntimeError:  # ishlayotgan loop yo'q (test muhiti)
+                    self._sending_chats.discard(chat_id)
 
     async def _mark_owner_active(self, chat_id: int) -> None:
         r = await get_redis()

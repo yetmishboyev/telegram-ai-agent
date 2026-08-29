@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.ai.job_inquiry import is_job_inquiry, get_job_inquiry_reply
+from app.ai.job_inquiry import is_job_inquiry, is_job_offer, get_job_inquiry_reply
 from app.ai.agents.analysis_agent import MessageAnalysis
 from app.ai.agents.classifier_agent import ClassificationResult, MessageCategory
 from app.services.ai_service import ai_service
@@ -70,6 +70,29 @@ def test_detects_job_inquiry(text):
 ])
 def test_ignores_non_job_messages(text):
     assert is_job_inquiry(text) is False
+
+
+@pytest.mark.parametrize("text", [
+    # Kimdir EGAGA ish taklif qilyapti — bu so'rov emas, muhim murojaat
+    "Assalomu alaykum, siz uchun ish bor",
+    "Sizni ishga qabul qilmoqchimiz",
+    "Bizda siz uchun ish o'rni bor",
+    "Sizga yaxshi lavozim taklif qilmoqchimiz",
+    "Предлагаем вам работу в нашей компании",
+    "We would like to offer you a position",
+])
+def test_job_offer_is_not_an_inquiry(text):
+    """Taklif eskalatsiyaga tushishi kerak, CV so'ralishi emas."""
+    assert is_job_offer(text) is True
+    assert is_job_inquiry(text) is False
+
+
+def test_reply_asks_for_the_cv_as_a_file():
+    """Matn sifatida yuborilgan obyektivka maxfiy filtrga tushib yo'qolardi."""
+    uz = get_job_inquiry_reply("uz")
+    assert "FAYL" in uz
+    assert "ФАЙЛОМ" in get_job_inquiry_reply("ru")
+    assert "FILE" in get_job_inquiry_reply("en")
 
 
 def test_reply_asks_for_cv_in_each_language():

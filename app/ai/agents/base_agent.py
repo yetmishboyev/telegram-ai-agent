@@ -19,6 +19,20 @@ def _structured_output_enabled() -> bool:
     return _structured_output_ok
 
 
+def _is_schema_rejection(error: Exception) -> bool:
+    """Xato sxema tufaylimi — vaqtinchalik nosozlikdan ajratadi.
+
+    Bu farq muhim: 429 (rate limit) yoki 529 (overloaded) ni "sxema rad
+    etildi" deb tushunsak, API bo'g'ilayotgan paytda ikki barobar so'rov
+    yuborardik va bitta tasodifiy nosozlik strukturali chiqishni butun
+    jarayon uchun o'chirib qo'yardi. Faqat 400 (yaroqsiz so'rov) va
+    `TypeError` (SDK parametrni umuman bilmaydi) sxema muammosi hisoblanadi.
+    """
+    if isinstance(error, TypeError):
+        return True
+    return getattr(error, "status_code", None) == 400
+
+
 def _disable_structured_output() -> None:
     global _structured_output_ok
     if _structured_output_ok:
@@ -141,7 +155,7 @@ class BaseAgent(ABC):
         try:
             response = await client.messages.create(**kwargs)
         except Exception as e:
-            if not structured:
+            if not structured or not _is_schema_rejection(e):
                 raise
             # Sxema qabul qilinmadi (model yoki API versiyasi qo'llab-quvvatlamaydi).
             # Bir marta sxemasiz qayta urinamiz: JSON'ni `parse_json_response`

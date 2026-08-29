@@ -30,8 +30,11 @@ class Settings(BaseSettings):
     # `anthropic_model` asosiy (balanced) qatlam; qolgan ikkitasi berilmasa
     # o'shanga qaytadi, ya'ni bitta modelli sozlash ham ishlayveradi.
     anthropic_model: str = "claude-sonnet-5"
-    anthropic_model_fast: str = "claude-haiku-4-5"
-    anthropic_model_deep: str = "claude-opus-5"
+    # Bo'sh qoldirilsa asosiy modelga qaytadi — mavjud o'rnatmalar (`.env` da
+    # faqat ANTHROPIC_MODEL bo'lgan) deploydan keyin jimgina boshqa modelga
+    # o'tib ketmasin. Tavsiya etilgan qiymatlar `.env.example` da.
+    anthropic_model_fast: str = ""
+    anthropic_model_deep: str = ""
 
     # --- Ovoz transkripsiyasi ---
     # Claude audio qabul qilmaydi, shuning uchun bu alohida provayder.
@@ -40,7 +43,11 @@ class Settings(BaseSettings):
     voice_enabled: bool = True
     voice_provider: Literal["openai", "none"] = "openai"
     voice_model: str = "whisper-1"
-    voice_language: str = "uz"
+    # Bo'sh = Whisper tilni o'zi aniqlaydi. "uz" majburlash o'zbekcha
+    # aniqlikni oshirishi mumkin, lekin ruscha/inglizcha ovozni buzadi —
+    # qaysi biri yaxshiroq ekani o'lchangandan keyin ma'lum bo'ladi
+    # (scripts/check_transcription.py).
+    voice_language: str = ""
     # Uzun ovozli xabar ham pul, ham kechikish — chegara qo'yiladi
     voice_max_duration_seconds: int = 300
 
