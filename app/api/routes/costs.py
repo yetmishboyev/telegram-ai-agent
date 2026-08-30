@@ -115,7 +115,11 @@ async def get_by_agent(
             func.avg(_num("output_tokens")).label("tokens_out"),
         )
         .where(_scope(source), AgentLog.created_at >= _since(days))
-        .group_by(_text("agent"), _text("model"))
+        # Yorliq nomi bo'yicha guruhlash — ifodani takrorlash MUMKIN EMAS:
+        # `extra[...]` kalitni bog'langan parametr sifatida yuboradi, va
+        # SELECT dagi $1 bilan GROUP BY dagi $7 ni Postgres bir xil ifoda deb
+        # tanimay, "must appear in the GROUP BY clause" xatosini beradi.
+        .group_by("agent", "model")
         .order_by(desc(func.sum(_num("cost_usd"))))
     )
     return [

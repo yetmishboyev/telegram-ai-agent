@@ -130,3 +130,34 @@ def test_replay_never_imports_process_message():
     source = (Path(__file__).parent.parent / "scripts" / "replay_agents.py").read_text()
     assert "process_message" not in source.split('"""', 2)[2], \
         "replay skripti ai_service.process_message ni chaqirmasligi kerak"
+
+
+# ─── endpointlar HAQIQIY bazaga qarshi ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["live", "replay"])
+async def test_every_cost_endpoint_executes_against_postgres(db_session, source):
+    """Endpointlar HAQIQATAN bajarilishi kerak, kompilyatsiya yetarli emas.
+
+    `extra[...]` JSON kaliti bog'langan parametr sifatida yuboriladi, shuning
+    uchun SELECT va GROUP BY dagi bir xil ifoda Postgres uchun BOSHQA
+    ko'rinadi ("must appear in the GROUP BY clause"). Bu faqat bajarilganda
+    chiqadi — SQLAlchemy kompilyatsiyasi bemalol o'tib ketadi (2026-08-30).
+    """
+    import inspect
+    from app.api.routes import costs
+
+    endpoints = [
+        costs.get_summary, costs.get_by_agent, costs.get_timeline,
+        costs.get_expensive_calls, costs.get_cache_effectiveness,
+    ]
+    for fn in endpoints:
+        params = inspect.signature(fn).parameters
+        kwargs = {"db": db_session, "_": None, "days": 30}
+        if "source" in params:
+            kwargs["source"] = source
+        elif source == "replay":
+            continue          # bu endpoint manba ajratmaydi
+        if "limit" in params:
+            kwargs["limit"] = 5
+        await fn(**kwargs)    # istisno ko'tarilmasligi kerak
