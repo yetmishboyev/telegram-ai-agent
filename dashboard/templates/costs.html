@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% set active_page = "costs" %}
+{% block title %}Xarajat{% endblock %}
+
+{% block content %}
+<div class="p-6" x-data="costsPage()" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-lg font-semibold text-slate-200">💰 LLM xarajati</h1>
+            <p class="text-slate-500 text-xs mt-0.5">
+                Har chaqiruv <code class="text-slate-400">AgentLog</code>ga yoziladi — token, narx, kechikish
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Manba: haqiqiy trafik va o'lchov yurgizishi ARALASHTIRILMAYDI -->
+            <div class="flex rounded-lg overflow-hidden border border-slate-700">
+                <button @click="setSource('live')"
+                    :class="source === 'live' ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'"
+                    class="px-3 py-1.5 text-xs font-medium transition-colors">Haqiqiy</button>
+                <button @click="setSource('replay')"
+                    :class="source === 'replay' ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'"
+                    class="px-3 py-1.5 text-xs font-medium transition-colors">Replay</button>
+            </div>
+            <div class="flex rounded-lg overflow-hidden border border-slate-700">
+                <template x-for="d in [7, 30, 90]" :key="d">
+                    <button @click="setRange(d)"
+                        :class="rangeDays === d ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'"
+                        class="px-3 py-1.5 text-xs font-medium transition-colors"
+                        x-text="d + 'k'"></button>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Replay ogohlantirishi -->
+    <div x-show="source === 'replay'" x-cloak
+        class="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+        <p class="text-xs text-amber-300/90 leading-relaxed">
+            <b>O'lchov yurgizishi</b> — <code>scripts/replay_agents.py</code> tarixiy xabarlarni
+            qayta o'tkazgan. Bu haqiqiy foydalanuvchi trafigi emas va kunlik xarajat hisobiga
+            kirmaydi; agentlar nisbatini va o'rtacha narxni bilish uchun ishlatiladi.
+        </p>
+    </div>
+
+    <!-- Bo'sh holat -->
+    <div x-show="!loading && summary.calls === 0" x-cloak
+        class="card p-10 text-center">
+        <div class="text-3xl mb-3">📭</div>
+        <h3 class="text-slate-300 font-medium mb-1.5">Hali ma'lumot yo'q</h3>
+        <p class="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
+            <template x-if="source === 'live'">
+                <span>Bu davrda LLM chaqiruvi qayd etilmagan. Agent xabarlarga javob bera
+                boshlagach yoki kanal posti yaratilgach, bu yer to'la boshlaydi.</span>
+            </template>
+            <template x-if="source === 'replay'">
+                <span>O'lchov yurgizilmagan. Tarixiy xabarlar ustida yurgizish uchun:
+                <code class="text-slate-400">uv run python scripts/replay_agents.py --dry-run</code></span>
+            </template>
+        </p>
+    </div>
+
+    <div x-show="loading" class="card p-10 text-center text-slate-500 text-sm">Yuklanmoqda...</div>
+
+    <div x-show="!loading && summary.calls > 0" x-cloak>
+        <!-- Asosiy ko'rsatkichlar -->
+        <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="card p-5">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Jami xarajat</span>
+                <div class="text-2xl font-bold text-emerald-400 mt-2 tabular-nums"
+                    x-text="'$' + fmtCost(summary.cost_usd)"></div>
+                <div class="text-xs text-slate-500 mt-1"
+                    x-text="'kuniga ~$' + fmtCost(summary.cost_per_day)"></div>
+            </div>
+            <div class="card p-5">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Chaqiruvlar</span>
+                <div class="text-2xl font-bold text-sky-400 mt-2 tabular-nums"
+                    x-text="fmtNum(summary.calls)"></div>
+                <div class="text-xs text-slate-500 mt-1"
+                    x-text="'bittasi ~$' + fmtCost(summary.cost_per_call)"></div>
+            </div>
+            <div class="card p-5">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">O'rtacha kechikish</span>
+                <div class="text-2xl font-bold text-violet-400 mt-2 tabular-nums"
+                    x-text="fmtNum(summary.avg_latency_ms) + ' ms'"></div>
+                <div class="text-xs text-slate-500 mt-1"
+                    x-text="fmtNum(summary.input_tokens + summary.output_tokens) + ' token'"></div>
+            </div>
+            <div class="card p-5">
+                <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Xatolar</span>
+                <div class="text-2xl font-bold mt-2 tabular-nums"
+                    :class="summary.errors > 0 ? 'text-rose-400' : 'text-slate-400'"
+                    x-text="fmtNum(summary.errors)"></div>
+                <div class="text-xs text-slate-500 mt-1"
+                    x-text="summary.error_rate + '% chaqiruvdan'"></div>
+            </div>
+        </div>
+
+        <!-- Kunlik chart -->
+        <div class="card p-5 mb-6">
+            <div class="flex items-baseline justify-between mb-4">
+                <h2 class="text-sm font-semibold text-slate-300">Kunlik xarajat</h2>
+                <span class="text-xs text-slate-500" x-text="tlHover
+                    ? tlHover.date + ' · $' + fmtCost(tlHover.cost) + ' · ' + tlHover.calls + ' chaqiruv'
+                    : rangeDays + ' kun'"></span>
+            </div>
+            <div class="flex items-end gap-px h-32" style="overflow-x: auto;">
+                <template x-for="(d, i) in timeline" :key="i">
+                    <div class="flex-1 min-w-[3px] h-full flex items-end group relative"
+                        @mouseenter="tlHover = d" @mouseleave="tlHover = null">
+                        <div class="w-full rounded-t transition-colors"
+                            :class="d.cost > 0 ? 'bg-emerald-500/60 group-hover:bg-emerald-400' : 'bg-slate-800'"
+                            :style="`height: ${d.cost > 0 ? Math.max(4, d.cost / maxCost * 100) : 2}%`"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Agent taqsimoti -->
+        <div class="card p-5 mb-6">
+            <h2 class="text-sm font-semibold text-slate-300 mb-4">Agent bo'yicha</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead>
+                        <tr class="text-slate-500 uppercase tracking-wide">
+                            <th class="text-left font-medium pb-2">Agent</th>
+                            <th class="text-left font-medium pb-2">Model</th>
+                            <th class="text-right font-medium pb-2">Chaqiruv</th>
+                            <th class="text-right font-medium pb-2">Xarajat</th>
+                            <th class="text-right font-medium pb-2">Token (in/out)</th>
+                            <th class="text-right font-medium pb-2">Kechikish</th>
+                            <th class="text-left font-medium pb-2 pl-4 w-32">Ulush</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="a in byAgent" :key="a.agent + a.model">
+                            <tr class="border-t border-slate-800">
+                                <td class="py-2.5 text-slate-300 font-medium" x-text="a.agent"></td>
+                                <td class="py-2.5 text-slate-500 font-mono" x-text="a.model"></td>
+                                <td class="py-2.5 text-right text-slate-400 tabular-nums" x-text="fmtNum(a.calls)"></td>
+                                <td class="py-2.5 text-right text-emerald-400 tabular-nums"
+                                    x-text="'$' + fmtCost(a.cost_usd)"></td>
+                                <td class="py-2.5 text-right text-slate-500 tabular-nums"
+                                    x-text="a.avg_input_tokens + ' / ' + a.avg_output_tokens"></td>
+                                <td class="py-2.5 text-right text-slate-500 tabular-nums"
+                                    x-text="fmtNum(a.avg_latency_ms) + ' ms'"></td>
+                                <td class="py-2.5 pl-4">
+                                    <div class="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                        <div class="h-full bg-emerald-500/70 rounded-full"
+                                            :style="`width: ${a.cost_usd / maxAgentCost * 100}%`"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <!-- Kesh holati -->
+            <div class="card p-5" x-show="source === 'live'">
+                <h2 class="text-sm font-semibold text-slate-300 mb-3">Prompt keshlash</h2>
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-2 h-2 rounded-full"
+                        :class="cache.working ? 'bg-emerald-400' : 'bg-slate-600'"></span>
+                    <span class="text-sm font-medium"
+                        :class="cache.working ? 'text-emerald-400' : 'text-slate-400'"
+                        x-text="cache.working ? 'Ishlayapti' : 'Ishlamayapti'"></span>
+                    <span class="text-xs text-slate-500 tabular-nums"
+                        x-show="cache.working" x-text="'· ' + cache.hit_rate + '% tejam'"></span>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed" x-show="!cache.working">
+                    Kesh faqat barqaror prefiks ~1024 tokendan oshsagina yoqiladi.
+                    Hozirgi system prompt undan kichik, shuning uchun <code>cache_control</code>
+                    e'tiborsiz qoldirilyapti — hech narsa buzilmaydi, lekin tejam ham yo'q.
+                    Kontekst o'sganda o'z-o'zidan yoqiladi.
+                </p>
+                <div class="text-xs text-slate-500 tabular-nums" x-show="cache.working">
+                    <div class="flex justify-between py-1 border-t border-slate-800">
+                        <span>Keshdan o'qildi</span>
+                        <span class="text-slate-400" x-text="fmtNum(cache.cache_read_tokens)"></span>
+                    </div>
+                    <div class="flex justify-between py-1 border-t border-slate-800">
+                        <span>Keshsiz kiruvchi</span>
+                        <span class="text-slate-400" x-text="fmtNum(cache.uncached_input_tokens)"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Eng qimmat chaqiruvlar -->
+            <div class="card p-5" :class="source === 'replay' ? 'col-span-2' : ''">
+                <h2 class="text-sm font-semibold text-slate-300 mb-3">Eng qimmat chaqiruvlar</h2>
+                <div class="space-y-1.5">
+                    <template x-for="(c, i) in expensive" :key="i">
+                        <div class="flex items-center justify-between text-xs py-1.5 border-t border-slate-800">
+                            <div class="min-w-0">
+                                <span class="text-slate-300 font-medium" x-text="c.agent"></span>
+                                <span class="text-slate-600 mx-1.5">·</span>
+                                <span class="text-slate-500" x-text="fmtDate(c.created_at)"></span>
+                            </div>
+                            <div class="flex items-center gap-3 flex-shrink-0 tabular-nums">
+                                <span class="text-slate-500"
+                                    x-text="c.input_tokens + '/' + c.output_tokens"></span>
+                                <span class="text-emerald-400 font-medium"
+                                    x-text="'$' + fmtCost(c.cost_usd)"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function costsPage() {
+    return {
+        summary: { calls: 0 },
+        byAgent: [],
+        timeline: [],
+        expensive: [],
+        cache: {},
+        rangeDays: 30,
+        source: 'live',
+        loading: true,
+        tlHover: null,
+
+        get maxCost() {
+            return Math.max(1e-9, ...this.timeline.map(d => d.cost));
+        },
+        get maxAgentCost() {
+            return Math.max(1e-9, ...this.byAgent.map(a => a.cost_usd));
+        },
+
+        async init() { await this.load(); },
+
+        async setRange(days) {
+            if (this.rangeDays === days) return;
+            this.rangeDays = days;
+            await this.load();
+        },
+
+        async setSource(source) {
+            if (this.source === source) return;
+            this.source = source;
+            await this.load();
+        },
+
+        async load() {
+            this.loading = true;
+            const q = `?days=${this.rangeDays}&source=${this.source}`;
+            const [summary, byAgent, timeline, expensive, cache] = await Promise.all([
+                api('/costs/summary' + q),
+                api('/costs/by-agent' + q),
+                api('/costs/timeline' + q),
+                api('/costs/expensive' + q + '&limit=8'),
+                api(`/costs/cache?days=${this.rangeDays}`),
+            ]);
+            this.summary = summary || { calls: 0 };
+            this.byAgent = byAgent || [];
+            this.timeline = (timeline && timeline.series) || [];
+            this.expensive = expensive || [];
+            this.cache = cache || {};
+            this.loading = false;
+        },
+
+        fmtNum(n) {
+            if (n == null) return '—';
+            return new Intl.NumberFormat('ru').format(Math.round(n));
+        },
+        fmtCost(v) {
+            if (v == null) return '0';
+            if (v === 0) return '0';
+            if (v < 0.01) return v.toFixed(5);
+            if (v < 1) return v.toFixed(3);
+            return v.toFixed(2);
+        },
+    };
+}
+</script>
+{% endblock %}

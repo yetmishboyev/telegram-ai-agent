@@ -9,12 +9,36 @@ Yozish har doim fon vazifasida va har doim try/except ichida: hisob yuritish
 javob berishni hech qachon sekinlashtirmasligi yoki buzmasligi kerak.
 """
 import asyncio
+from contextlib import contextmanager
 
 from loguru import logger
 
 from app.ai.models import estimate_cost_usd
 
+# Haqiqiy trafik va qayta yurgizish (replay) qatorlari AJRATILADI. Aks holda
+# "kunlik xarajat" ma'nosini yo'qotardi: qatorlarning yarmi foydalanuvchidan
+# emas, o'lchov skriptidan kelgan bo'lardi. Dashboard standart holatda faqat
+# `llm.` prefiksini sanaydi.
 COMPONENT_PREFIX = "llm"
+SYNTHETIC_PREFIX = "replay"
+
+_synthetic_mode = False
+
+
+@contextmanager
+def synthetic_run():
+    """Shu blok ichidagi chaqiruvlar sun'iy deb belgilanadi.
+
+    Faqat bitta jarayonli o'lchov skripti uchun — server bu bayroqni hech
+    qachon yoqmaydi.
+    """
+    global _synthetic_mode
+    previous = _synthetic_mode
+    _synthetic_mode = True
+    try:
+        yield
+    finally:
+        _synthetic_mode = previous
 
 
 def _usage_field(usage, name: str) -> int:
@@ -37,7 +61,8 @@ def extract_usage(response) -> dict:
 
 
 async def _write(
-    agent: str, model: str, tier: str, latency_ms: int, tokens: dict, error: str | None
+    agent: str, model: str, tier: str, latency_ms: int, tokens: dict,
+    error: str | None, synthetic: bool = False,
 ) -> None:
     from app.database.models import AgentLog
     from app.database.session import AsyncSessionLocal
@@ -53,6 +78,8 @@ async def _write(
         "cost_usd": cost,
         **tokens,
     }
+    if synthetic:
+        extra["synthetic"] = True
     if error:
         extra["error"] = error[:500]
 
@@ -64,7 +91,7 @@ async def _write(
     async with AsyncSessionLocal() as db:
         db.add(AgentLog(
             level="ERROR" if error else "INFO",
-            component=f"{COMPONENT_PREFIX}.{agent}",
+            component=f"{SYNTHETIC_PREFIX if synthetic else COMPONENT_PREFIX}.{agent}",
             message=message if not error else f"{message} — XATO",
             extra=extra,
         ))
@@ -80,10 +107,13 @@ def record(
     error: str | None = None,
 ) -> None:
     """Chaqiruv hisobini fon vazifasi sifatida yozadi (hech qachon ko'tarilmaydi)."""
+    # Bayroq CHAQIRUV paytida o'qiladi — fon vazifasi ishga tushganda
+    # `synthetic_run()` bloki allaqachon tugagan bo'lishi mumkin.
+    synthetic = _synthetic_mode
 
     async def _safe() -> None:
         try:
-            await _write(agent, model, tier, latency_ms, tokens or {}, error)
+            await _write(agent, model, tier, latency_ms, tokens or {}, error, synthetic)
         except Exception as e:  # hisob yuritish asosiy oqimni buzmasin
             logger.debug(f"LLM hisobini yozishda xato: {e}")
 
