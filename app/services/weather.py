@@ -160,6 +160,24 @@ def format_post(rows: list[dict], comment: str = "") -> str:
     return "\n".join(lines)
 
 
+# Rasm ostidagi izoh. Shaharlar ro'yxati RASMDA, shuning uchun bu yerda
+# takrorlanmaydi — faqat sana, maslahat, hashtag va kanal havolasi.
+CAPTION_FOOTER = (
+    '\n\n—\n<a href="https://t.me/Yetmishboyev_Sh">'
+    "📢 Kanalga obuna bo'lishni unutmang</a>"
+)
+
+
+def caption(comment: str = "") -> str:
+    """Rasmli post uchun izoh (Telegram chegarasi 1024 belgi)."""
+    parts = [f"🌤 <b>Ob-havo — {uzbek_date()}</b>"]
+    if comment:
+        parts.append(f"\n💬 {comment}")
+    parts.append("\n#obhavo #ozbekiston")
+    text = "\n".join(parts) + CAPTION_FOOTER
+    return text[:1024]
+
+
 def summarize(rows: list[dict]) -> dict:
     """Izoh yozish uchun asosiy faktlar (LLM ga aynan shular beriladi)."""
     hottest = max(rows, key=lambda r: r["max"])

@@ -68,6 +68,25 @@ class ChannelPoster:
             logger.error(f"Kanal post xatosi: {e}")
             return None
 
+    async def _send_photo_to_channel(self, image: bytes, caption: str) -> int | None:
+        """Kanalga rasm + izoh yuboradi. Muvaffaqiyatli bo'lsa message_id qaytaradi."""
+        import io
+        try:
+            from app.services.bot_service import bot_service
+            if not bot_service._client:
+                logger.warning("Bot client tayyor emas")
+                return None
+            stream = io.BytesIO(image)
+            stream.name = "ob-havo.png"   # Telethon turini nomdan aniqlaydi
+            msg = await bot_service._client.send_file(
+                CHANNEL, stream, caption=caption, parse_mode="html",
+            )
+            logger.info(f"Kanal rasm posti yuborildi ({len(image) // 1024} KB)")
+            return msg.id
+        except Exception as e:
+            logger.error(f"Kanal rasm posti xatosi: {e}")
+            return None
+
     async def _save_channel_post(
         self, telegram_message_id: int, post_type: str, topic: str, text: str,
         category: str = "",
@@ -363,9 +382,20 @@ class ChannelPoster:
             return
 
         comment = await self._weather_comment(rows)
-        text = weather.format_post(rows, comment)
 
-        message_id = await self._send_to_channel(text)
+        # Rasm bilan yuborishga urinamiz; chizilmasa oddiy matnli postga qaytamiz —
+        # rasm hech qachon postni to'sib qo'ymasligi kerak.
+        from app.services import weather_image
+        image = weather_image.render(rows, weather.uzbek_date())
+
+        if image:
+            text = weather.caption(comment)
+            message_id = await self._send_photo_to_channel(image, text)
+        else:
+            logger.warning("Ob-havo rasmi chizilmadi — matnli postga qaytildi")
+            text = weather.format_post(rows, comment) + CHANNEL_FOOTER_HTML
+            message_id = await self._send_to_channel(text)
+
         if not message_id:
             logger.error("Ob-havo posti kanalga yuborilmadi")
             return
@@ -374,9 +404,12 @@ class ChannelPoster:
             telegram_message_id=message_id,
             post_type="weather",
             topic=weather.uzbek_date(),
-            text=text,
+            text=weather.format_post(rows, comment),   # analitikada to'liq matn
         )
-        logger.info(f"Ob-havo posti yuborildi ({len(rows)} shahar)")
+        logger.info(
+            f"Ob-havo posti yuborildi ({len(rows)} shahar, "
+            f"{'rasm bilan' if image else 'matn'})"
+        )
 
     async def _weather_comment(self, rows: list[dict]) -> str:
         """Bir gaplik maslahat. Xato bo'lsa bo'sh — post baribir chiqadi.

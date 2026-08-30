@@ -146,26 +146,84 @@ async def test_no_post_when_data_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_post_is_sent_and_recorded():
+async def test_post_goes_out_as_a_photo():
     with patch("app.services.weather.fetch", AsyncMock(return_value=_rows())), \
          patch.object(channel_poster, "_weather_comment", AsyncMock(return_value="izoh")), \
-         patch.object(channel_poster, "_send_to_channel", AsyncMock(return_value=555)) as send, \
+         patch("app.services.weather_image.render", return_value=b"PNG"), \
+         patch.object(channel_poster, "_send_photo_to_channel",
+                      AsyncMock(return_value=555)) as photo, \
+         patch.object(channel_poster, "_send_to_channel",
+                      AsyncMock(side_effect=AssertionError("matnli post emas"))), \
          patch.object(channel_poster, "_save_channel_post", AsyncMock()) as save:
         await channel_poster.post_weather()
 
-    assert "Toshkent" in send.await_args.args[0]
+    image, caption = photo.await_args.args
+    assert image == b"PNG"
+    assert "izoh" in caption
+    assert "t.me/Yetmishboyev_Sh" in caption, "kanal havolasi bo'lishi kerak"
+    # Shaharlar RASMDA — izohda takrorlanmaydi
+    assert "Toshkent" not in caption
+    # Analitikaga esa to'liq matn saqlanadi
+    assert "Toshkent" in save.await_args.kwargs["text"]
     assert save.await_args.kwargs["post_type"] == "weather"
-    assert save.await_args.kwargs["telegram_message_id"] == 555
+
+
+@pytest.mark.asyncio
+async def test_falls_back_to_text_when_image_fails():
+    """Rasm chizilmasa post baribir chiqadi — rasm hech narsani to'smaydi."""
+    with patch("app.services.weather.fetch", AsyncMock(return_value=_rows())), \
+         patch.object(channel_poster, "_weather_comment", AsyncMock(return_value="izoh")), \
+         patch("app.services.weather_image.render", return_value=None), \
+         patch.object(channel_poster, "_send_photo_to_channel",
+                      AsyncMock(side_effect=AssertionError("rasm yo'q edi"))), \
+         patch.object(channel_poster, "_send_to_channel", AsyncMock(return_value=777)) as send, \
+         patch.object(channel_poster, "_save_channel_post", AsyncMock()):
+        await channel_poster.post_weather()
+
+    text = send.await_args.args[0]
+    assert "Toshkent" in text
+    assert "t.me/Yetmishboyev_Sh" in text
 
 
 @pytest.mark.asyncio
 async def test_nothing_recorded_when_send_fails():
     with patch("app.services.weather.fetch", AsyncMock(return_value=_rows())), \
          patch.object(channel_poster, "_weather_comment", AsyncMock(return_value="")), \
-         patch.object(channel_poster, "_send_to_channel", AsyncMock(return_value=None)), \
+         patch("app.services.weather_image.render", return_value=b"PNG"), \
+         patch.object(channel_poster, "_send_photo_to_channel", AsyncMock(return_value=None)), \
          patch.object(channel_poster, "_save_channel_post",
                       AsyncMock(side_effect=AssertionError("saqlanmasligi kerak"))):
         await channel_poster.post_weather()
+
+
+# ─── rasm ─────────────────────────────────────────────────────────────────────
+
+def test_card_renders_to_png():
+    from app.services import weather_image
+    png = weather_image.render(_rows(), "30-avgust, yakshanba")
+    assert png and png[:8] == b"\x89PNG\r\n\x1a\n", "haqiqiy PNG bo'lishi kerak"
+
+
+def test_card_height_follows_row_count():
+    from app.services import weather_image
+    assert weather_image.canvas_height(13) > weather_image.canvas_height(3)
+
+
+def test_card_returns_none_without_rows():
+    from app.services import weather_image
+    assert weather_image.render([], "sana") is None
+
+
+def test_temperature_colour_scales_with_heat():
+    from app.services.weather_image import temp_color
+    hot, cold = temp_color(42), temp_color(-5)
+    assert hot[0] > hot[2], "issiq — qizilroq"
+    assert cold[2] > cold[0], "sovuq — ko'kroq"
+
+
+def test_caption_stays_within_telegram_limit():
+    from app.services import weather
+    assert len(weather.caption("x" * 3000)) <= 1024
 
 
 # ─── jadval ────────────────────────────────────────────────────────────────────

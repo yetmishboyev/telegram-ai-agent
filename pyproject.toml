@@ -35,6 +35,8 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "bcrypt>=4.0.1",
     "cryptography>=43.0.0",
+    # Rasm generatsiya (ob-havo kartasi)
+    "pillow>=11.0.0",
     # Logging
     "loguru>=0.7.2",
     # Utilities
