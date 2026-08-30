@@ -7,6 +7,11 @@ parse buzilardi. Sxema berilganda API javob shaklini kafolatlaydi.
 Sxemalar Pydantic modellaridan chiqarilmadi, qo'lda yozildi: Pydantic
 `$ref`/`$defs` ishlatadi va enum'larni alohida ta'rifga chiqaradi, bu esa
 kerakmas murakkablik. Bu yerdagi tekis sxemalar hujjat vazifasini ham bajaradi.
+
+CHEKLOVLAR: API `number`/`integer` uchun `minimum`/`maximum` ni QABUL
+QILMAYDI (2026-08-30 da jonli tekshirildi — 400 qaytaradi). Diapazon
+promptda aytiladi va qabul qiluvchi tomonda tekshiriladi. `enum` va
+massiv uzunligi cheklovlari esa ishlaydi.
 """
 
 # ─── xabar tahlili (analysis_agent) ───────────────────────────────────────────
@@ -15,7 +20,7 @@ MESSAGE_ANALYSIS_SCHEMA: dict = {
     "properties": {
         "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},
         "intent": {"type": "string"},
-        "importance": {"type": "number", "minimum": 0, "maximum": 1},
+        "importance": {"type": "number"},
         "threat_level": {"type": "string", "enum": ["none", "low", "medium", "high"]},
         "is_spam": {"type": "boolean"},
         "is_phishing": {"type": "boolean"},
@@ -24,7 +29,7 @@ MESSAGE_ANALYSIS_SCHEMA: dict = {
         "should_respond": {"type": "boolean"},
         "response_priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"]},
         "detected_language": {"type": "string"},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "confidence": {"type": "number"},
         "reason": {"type": "string"},
     },
     "required": [
@@ -50,7 +55,7 @@ EXTRACTED_FACTS_SCHEMA: dict = {
                     },
                     "key": {"type": "string"},
                     "value": {"type": "string"},
-                    "importance": {"type": "number", "minimum": 0, "maximum": 1},
+                    "importance": {"type": "number"},
                 },
                 "required": ["category", "key", "value"],
                 "additionalProperties": False,
@@ -70,7 +75,7 @@ CLASSIFICATION_SCHEMA: dict = {
             "enum": ["important", "greeting", "simple", "general"],
         },
         "language": {"type": "string", "enum": ["uz", "ru", "en", "other"]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "confidence": {"type": "number"},
         "reason": {"type": "string"},
         "should_notify_owner": {"type": "boolean"},
     },
@@ -82,7 +87,7 @@ CLASSIFICATION_SCHEMA: dict = {
 CURATION_SCHEMA: dict = {
     "type": "object",
     "properties": {
-        "index": {"type": "integer", "minimum": 0},
+        "index": {"type": "integer"},
         "category": {"type": "string"},
         "reason": {"type": "string"},
     },
@@ -96,7 +101,7 @@ QUIZ_SCHEMA: dict = {
     "properties": {
         "question": {"type": "string"},
         "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4},
-        "correct_index": {"type": "integer", "minimum": 0, "maximum": 3},
+        "correct_index": {"type": "integer"},
         "explanation": {"type": "string"},
     },
     "required": ["question", "options"],
