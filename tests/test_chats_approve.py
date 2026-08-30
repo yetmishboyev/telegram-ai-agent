@@ -46,7 +46,7 @@ async def test_approve_with_edit_teaches_style_learner(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
-        with patch("app.api.routes.chats.telegram_service.send_message", AsyncMock()), \
+        with patch("app.api.routes.chats.telegram_service.send_message", AsyncMock()) as mock_send, \
              patch("app.api.routes.chats.style_learner.learn", AsyncMock()) as mock_learn:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post(
@@ -56,6 +56,8 @@ async def test_approve_with_edit_teaches_style_learner(db_session):
             assert resp.status_code == 200
             await asyncio.sleep(0.05)  # fire-and-forget create_task tugashini kutish
             mock_learn.assert_called_once_with("Tahrirlangan yakuniy matn")
+            # Ega o'zi yozgan matn — owner_active va uslub o'rganish o'rinli
+            assert mock_send.await_args.kwargs["as_agent"] is False
     finally:
         app.dependency_overrides.clear()
         await db_session.execute(delete(Message).where(Message.id == msg_id))
@@ -88,7 +90,7 @@ async def test_approve_without_edit_does_not_teach_style_learner(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
-        with patch("app.api.routes.chats.telegram_service.send_message", AsyncMock()), \
+        with patch("app.api.routes.chats.telegram_service.send_message", AsyncMock()) as mock_send, \
              patch("app.api.routes.chats.style_learner.learn", AsyncMock()) as mock_learn:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post(
@@ -98,6 +100,9 @@ async def test_approve_without_edit_does_not_teach_style_learner(db_session):
             assert resp.status_code == 200
             await asyncio.sleep(0.05)
             mock_learn.assert_not_called()
+            # Matn agentniki — chiquvchi handler uni eganing namunasi deb
+            # o'rganmasligi va owner_active qo'ymasligi kerak
+            assert mock_send.await_args.kwargs["as_agent"] is True
     finally:
         app.dependency_overrides.clear()
         await db_session.execute(delete(Message).where(Message.id == msg_id))

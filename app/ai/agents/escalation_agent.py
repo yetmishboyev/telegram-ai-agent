@@ -3,12 +3,15 @@ yo'naltirish javobini generatsiya qiladi (statik shablon o'rniga)."""
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.prompts.system_prompt import ESCALATION_PROMPT
 
 
 class EscalationAgent(BaseAgent):
     """Muhim/shaxsiy javob talab qiladigan xabarni egaga yo'naltirar ekan,
     foydalanuvchiga jonli, mavzuga bog'liq javob yozadi."""
+
+    tier = ModelTier.BALANCED
 
     async def run(self, *args, **kwargs) -> str:
         return await self.generate(*args, **kwargs)

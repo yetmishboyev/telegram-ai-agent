@@ -26,7 +26,15 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     openai_model: str = "gpt-4o"
-    anthropic_model: str = "claude-sonnet-4-6"
+    # Anthropic modellari qatlam bo'yicha (app/ai/models.py — ModelTier).
+    # `anthropic_model` asosiy (balanced) qatlam; qolgan ikkitasi berilmasa
+    # o'shanga qaytadi, ya'ni bitta modelli sozlash ham ishlayveradi.
+    anthropic_model: str = "claude-sonnet-5"
+    # Bo'sh qoldirilsa asosiy modelga qaytadi — mavjud o'rnatmalar (`.env` da
+    # faqat ANTHROPIC_MODEL bo'lgan) deploydan keyin jimgina boshqa modelga
+    # o'tib ketmasin. Tavsiya etilgan qiymatlar `.env.example` da.
+    anthropic_model_fast: str = ""
+    anthropic_model_deep: str = ""
 
     # --- Database ---
     database_url: str = Field(..., description="PostgreSQL asyncpg URL")
@@ -78,6 +86,20 @@ class Settings(BaseSettings):
     @property
     def active_model(self) -> str:
         return self.openai_model if self.ai_provider == "openai" else self.anthropic_model
+
+    def model_for_tier(self, tier: str) -> str:
+        """Qatlam nomini aniq model ID'siga aylantiradi.
+
+        OpenAI yo'lida qatlam bo'linishi yo'q — bitta model qaytadi.
+        Anthropic yo'lida bo'sh qoldirilgan qatlam asosiy modelga qaytadi.
+        """
+        if self.ai_provider == "openai":
+            return self.openai_model
+        if tier == "fast":
+            return self.anthropic_model_fast or self.anthropic_model
+        if tier == "deep":
+            return self.anthropic_model_deep or self.anthropic_model
+        return self.anthropic_model
 
     @property
     def active_api_key(self) -> str:

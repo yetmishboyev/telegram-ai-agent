@@ -801,6 +801,7 @@ class BotService:
                                 self._owner_id,
                                 "⚠️ Bot sessiyasi muddati tugadi — qayta autentifikatsiya "
                                 "kerak. Kunlik reja va post tasdiqlash botlari ishlamayapti.",
+                                as_agent=True,
                             )
                         except Exception as notify_err:
                             logger.error(f"Uzilish haqida bildirishnoma yuborilmadi: {notify_err}")

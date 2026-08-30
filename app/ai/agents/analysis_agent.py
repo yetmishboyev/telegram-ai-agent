@@ -3,8 +3,10 @@ from loguru import logger
 from pydantic import BaseModel
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.agents.json_parse import parse_json_response
 from app.ai.prompts.system_prompt import ANALYSIS_PROMPT, MEMORY_EXTRACTION_PROMPT
+from app.ai.schemas import EXTRACTED_FACTS_SCHEMA, MESSAGE_ANALYSIS_SCHEMA
 
 
 class MessageAnalysis(BaseModel):
@@ -26,6 +28,8 @@ class MessageAnalysis(BaseModel):
 class AnalysisAgent(BaseAgent):
     """Xabarni tahlil qiladi: sentiment, intent, xavf darajasi."""
 
+    tier = ModelTier.FAST
+
     async def run(self, message: str) -> MessageAnalysis:
         return await self.analyze_message(message)
 
@@ -36,6 +40,7 @@ class AnalysisAgent(BaseAgent):
                 system=ANALYSIS_PROMPT,
                 temperature=0.1,
                 max_tokens=512,
+                response_schema=MESSAGE_ANALYSIS_SCHEMA,
             )
             data = parse_json_response(raw)
             return MessageAnalysis(**data)
@@ -54,8 +59,13 @@ class AnalysisAgent(BaseAgent):
                 system=MEMORY_EXTRACTION_PROMPT,
                 temperature=0.1,
                 max_tokens=512,
+                response_schema=EXTRACTED_FACTS_SCHEMA,
             )
             facts = parse_json_response(raw)
+            # Sxema {"facts": [...]} shaklini majburlaydi; strukturali chiqish
+            # o'chirilgan bo'lsa model yalang'och massiv qaytarishi mumkin.
+            if isinstance(facts, dict):
+                facts = facts.get("facts", [])
             if isinstance(facts, list):
                 return facts
             return []

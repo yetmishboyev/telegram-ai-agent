@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.rag.embedder import get_embedder
 from app.ai.vector_db.chroma_client import chroma_client
 
@@ -80,6 +81,8 @@ Xabarlar:
 
 class _StyleCardAgent(BaseAgent):
     """Eganing xabarlaridan uslub kartasini chiqaradi."""
+
+    tier = ModelTier.FAST
 
     async def run(self, samples: list[str]) -> str | None:
         return await self.build(samples)
@@ -161,7 +164,65 @@ class StyleLearner:
         except Exception as e:
             logger.warning(f"Uslub saqlashda xato: {e}")
 
+    async def purge_unlearnable(self) -> int:
+        """`_is_learnable` darvozasidan o'tmaydigan saqlangan namunalarni o'chiradi.
+
+        Darvoza 2026-08 da qo'shilgan, lekin undan OLDIN saqlangan namunalar
+        (jumladan hujjat so'rovlari) bazada qolib ketgan va hamon promptga
+        tushardi. Ilova har ishga tushganda shu tozalash bir marta yuriladi;
+        o'chiriladigan narsa bo'lmasa hech qanday ish qilmaydi.
+
+        Namuna o'chirilsa uslub kartasi ham eskirgan hisoblanadi: u o'sha
+        namunalar asosida qurilgan, shuning uchun kartani ham tashlab, toza
+        namunalardan qayta quramiz (yetarli namuna qolmasa — kartasiz qoladi).
+        """
+        try:
+            stored = await chroma_client.get(
+                where={"type": STYLE_DOC_TYPE}, include=["documents"]
+            )
+        except Exception as e:
+            logger.warning(f"Uslub namunalarini tozalashda xato: {e}")
+            return 0
+
+        ids = stored.get("ids", []) or []
+        docs = stored.get("documents", []) or []
+        bad_ids = [
+            doc_id for doc_id, doc in zip(ids, docs)
+            if not doc or not _is_learnable(doc)
+        ]
+        if not bad_ids:
+            return 0
+
+        try:
+            await chroma_client.delete(ids=bad_ids)
+        except Exception as e:
+            logger.warning(f"Yaroqsiz uslub namunalarini o'chirishda xato: {e}")
+            return 0
+
+        logger.info(
+            f"{len(bad_ids)} ta yaroqsiz uslub namunasi o'chirildi "
+            f"({len(ids) - len(bad_ids)} ta qoldi)"
+        )
+        await self._discard_card()
+        await self.rebuild_card()
+        return len(bad_ids)
+
     # ─── uslub kartasi (manerani umumlashtirish) ──────────────────────────────
+
+    async def _discard_card(self) -> None:
+        """Saqlangan uslub kartasini o'chiradi (namunalar tozalangandan keyin)."""
+        self._card_cache = None
+        try:
+            from sqlalchemy import delete
+            from app.database.session import AsyncSessionLocal
+            from app.database.models import AgentConfig
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    delete(AgentConfig).where(AgentConfig.key == STYLE_CARD_KEY)
+                )
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"Uslub kartasini o'chirishda xato: {e}")
 
     async def _load_card(self) -> dict | None:
         """Uslub kartasini keshdan yoki AgentConfig'dan o'qiydi."""

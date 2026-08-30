@@ -4,6 +4,10 @@ import xml.etree.ElementTree as ET
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
+from app.ai.schemas import (
+    CURATION_SCHEMA, GROWTH_STRATEGY_SCHEMA, POLL_SCHEMA, QUIZ_SCHEMA,
+)
 from app.utils.uz_text import to_latin_uz
 
 
@@ -236,6 +240,8 @@ def style_instruction(style: str) -> str:
 
 
 class NewsFetcher(BaseAgent):
+
+    tier = ModelTier.DEEP
 
     def __init__(self) -> None:
         super().__init__()
@@ -594,6 +600,7 @@ Faqat JSON qaytar: {{"index": <raqam>, "category": "<kategoriya kaliti>", "reaso
             raw = await self._call_llm(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3, max_tokens=300,
+                response_schema=CURATION_SCHEMA,
             )
             data = parse_json_response(raw)
             idx = int(data.get("index", 0))
@@ -677,6 +684,7 @@ Qoidalar: umumiy gap emas, shu statistikaga bog'langan aniq tavsiyalar ber (masa
                 messages=[{"role": "user", "content": prompt}],
                 # 900 yetmasdi — o'zbekcha to'liq strategiya kesilib, JSON buzilardi
                 temperature=0.5, max_tokens=2000,
+                response_schema=GROWTH_STRATEGY_SCHEMA,
             )
             data = parse_json_response(raw)
         except Exception as e:
@@ -718,6 +726,7 @@ Qoidalar: 2-4 variant; fikr/tanlov so'rovi (to'g'ri javob yo'q); hammasi o'zbek 
             raw = await self._call_llm(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.6, max_tokens=500,
+                response_schema=QUIZ_SCHEMA if kind == "quiz" else POLL_SCHEMA,
             )
             data = parse_json_response(raw)
         except Exception as e:

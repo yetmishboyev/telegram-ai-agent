@@ -4,8 +4,10 @@ from loguru import logger
 from pydantic import BaseModel
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.agents.json_parse import parse_json_response
 from app.ai.prompts.system_prompt import CLASSIFIER_PROMPT
+from app.ai.schemas import CLASSIFICATION_SCHEMA
 
 
 class MessageCategory(str, Enum):
@@ -25,6 +27,8 @@ class ClassificationResult(BaseModel):
 
 class ClassifierAgent(BaseAgent):
     """Xabarni kategoriyalaydi va egaga bildirishnoma kerakligini aniqlaydi."""
+
+    tier = ModelTier.FAST
 
     async def run(self, text: str, history: list[dict] | None = None) -> ClassificationResult:
         return await self.classify(text, history or [])
@@ -49,6 +53,7 @@ class ClassifierAgent(BaseAgent):
                 system=CLASSIFIER_PROMPT,
                 temperature=0.1,
                 max_tokens=256,
+                response_schema=CLASSIFICATION_SCHEMA,
             )
             data = parse_json_response(raw)
             result = ClassificationResult(**data)

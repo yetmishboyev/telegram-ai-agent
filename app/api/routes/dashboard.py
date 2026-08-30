@@ -52,3 +52,8 @@ async def dashboard_tasks(request: Request):
 @router.get("/channel", response_class=HTMLResponse)
 async def dashboard_channel(request: Request):
     return templates.TemplateResponse(request, "channel.html")
+
+
+@router.get("/costs", response_class=HTMLResponse)
+async def dashboard_costs(request: Request):
+    return templates.TemplateResponse(request, "costs.html")

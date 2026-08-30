@@ -170,7 +170,12 @@ async def approve_response(
     tg_user = result2.scalar_one_or_none()
 
     if tg_user:
-        await telegram_service.send_message(tg_user.telegram_id, final_text)
+        # Ega tahrir qilgan bo'lsa matn HAQIQATAN uniki — uslub o'rganilsin.
+        # Tahrirsiz tasdiqlansa matn agentniki: uni eganing namunasi sifatida
+        # o'rganish agentni o'ziga o'rgatgan bo'lardi.
+        await telegram_service.send_message(
+            tg_user.telegram_id, final_text, as_agent=not body.text
+        )
 
     msg.was_sent = True
     msg.was_approved = True

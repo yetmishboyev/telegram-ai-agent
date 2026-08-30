@@ -2,8 +2,9 @@
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.prompts.system_prompt import (
-    build_system_prompt,
+    build_system_blocks,
     SUMMARY_PROMPT,
 )
 from app.database.models import TelegramUser
@@ -11,6 +12,8 @@ from app.database.models import TelegramUser
 
 class ResponseAgent(BaseAgent):
     """Shaxzodbek uslubida javob generatsiya qiladi."""
+
+    tier = ModelTier.BALANCED
 
     async def run(
         self,
@@ -41,7 +44,9 @@ class ResponseAgent(BaseAgent):
         schedule_context: str = "",
         style_examples: str = "",
     ) -> str:
-        system_prompt = build_system_prompt(
+        # Blok shakli: birinchi (barqaror) blok keshlanadi, ikkinchisi har
+        # chaqiruvda o'zgaradi. Qarang: build_system_blocks.
+        system_blocks = build_system_blocks(
             user=user,
             relationship_type=relationship_type,
             conversation_summary=conversation_summary,
@@ -50,7 +55,7 @@ class ResponseAgent(BaseAgent):
         )
 
         if rag_context:
-            system_prompt += f"\n\n{rag_context}"
+            system_blocks[-1]["text"] += f"\n\n{rag_context}"
 
         # Suhbat tarixini messages formatiga o'tkazish
         messages: list[dict] = []
@@ -66,7 +71,7 @@ class ResponseAgent(BaseAgent):
         try:
             response = await self._call_llm(
                 messages=messages,
-                system=system_prompt,
+                system=system_blocks,
                 temperature=0.75,
                 max_tokens=512,
             )

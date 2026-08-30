@@ -3,6 +3,7 @@ savoliga tabiiy (va foydalanuvchi tilida) javob generatsiya qiladi."""
 from loguru import logger
 
 from app.ai.agents.base_agent import BaseAgent
+from app.ai.models import ModelTier
 from app.ai.prompts.system_prompt import FAQ_ANSWER_PROMPT
 
 # Bilim mos kelmaganda agent shu belgini qaytaradi → eskalatsiyaga tushadi.
@@ -10,6 +11,8 @@ NO_ANSWER = "NO_ANSWER"
 
 
 class FaqAgent(BaseAgent):
+
+    tier = ModelTier.BALANCED
     async def run(self, *args, **kwargs) -> str:
         return await self.generate(*args, **kwargs)
 
