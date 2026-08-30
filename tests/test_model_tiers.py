@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.ai.models import (
-    ModelTier, effort_for_temperature, estimate_cost_usd, uses_effort,
+    ModelTier, SDK_ACCEPTS_TEMPERATURE, effort_for_temperature,
+    estimate_cost_usd, sampling_mode, uses_effort,
 )
 from app.ai.agents.base_agent import BaseAgent
 from app.config import settings
@@ -26,10 +27,16 @@ def test_new_generation_uses_effort(model):
 
 
 @pytest.mark.parametrize("model", [
-    "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6", "gpt-4o",
+    "claude-haiku-4-5", "claude-sonnet-4-5", "gpt-4o",
 ])
-def test_older_models_keep_temperature(model):
+def test_models_without_effort_support(model):
     assert uses_effort(model) is False
+
+
+@pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+def test_4_6_family_also_supports_effort(model):
+    """4.6-oila `effort` ni tushunadi (low/medium/high/max)."""
+    assert uses_effort(model) is True
 
 
 @pytest.mark.parametrize("temperature,expected", [
@@ -148,10 +155,44 @@ async def test_balanced_agent_never_exceeds_medium_effort():
 
 
 @pytest.mark.asyncio
-async def test_older_model_gets_temperature_and_no_effort():
+async def test_effortless_model_never_gets_effort():
     kwargs = await _capture_call("claude-haiku-4-5")
-    assert kwargs["temperature"] == 0.1
-    assert "output_config" not in kwargs, "eski modellar effort'ni tushunmaydi"
+    assert "output_config" not in kwargs, "Haiku 4.5 effort'ni rad etadi"
+    # `temperature` faqat SDK uni qabul qilsa yuboriladi
+    assert ("temperature" in kwargs) is SDK_ACCEPTS_TEMPERATURE
+
+
+def test_sampling_mode_respects_both_model_and_sdk():
+    """Model YETARLI EMAS — SDK imkoniyati ham hisobga olinishi kerak.
+
+    SDK 1.x da `temperature` butunlay yo'q: eski model uchun uni yuborish
+    TypeError beradi va har chaqiruv yiqiladi (2026-08-30, produksiya).
+    """
+    assert sampling_mode("claude-sonnet-5") == "effort"
+    assert sampling_mode("claude-sonnet-4-6") == "effort"
+    expected = "temperature" if SDK_ACCEPTS_TEMPERATURE else "none"
+    assert sampling_mode("claude-haiku-4-5") == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", [
+    "claude-opus-5", "claude-sonnet-5", "claude-sonnet-4-6",
+    "claude-haiku-4-5", "claude-sonnet-4-5",
+])
+async def test_every_argument_is_accepted_by_the_real_sdk(model):
+    """Qurilgan argumentlar HAQIQIY SDK imzosiga mos kelishi shart.
+
+    Mavjud testlar `AsyncMock` ishlatadi — u istalgan argumentni qabul
+    qiladi, shuning uchun yaroqsiz argument ular orqali sezilmaydi. Bu test
+    argumentlarni SDK ning haqiqiy imzosiga solishtiradi (API chaqirmasdan).
+    """
+    import inspect
+    from anthropic.resources.messages import AsyncMessages
+
+    kwargs = await _capture_call(model)
+    allowed = set(inspect.signature(AsyncMessages.create).parameters)
+    unknown = set(kwargs) - allowed
+    assert not unknown, f"SDK bilmaydigan argument(lar): {unknown}"
 
 
 @pytest.mark.asyncio

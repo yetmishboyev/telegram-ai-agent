@@ -16,10 +16,9 @@ class ModelTier(str, Enum):
 
 
 # ─── imkoniyatlar ─────────────────────────────────────────────────────────────
-# Yangi avlod modellari (5-oila va Opus 4.7+) sampling parametrlarini QABUL
-# QILMAYDI — `temperature` yuborilsa API 400 qaytaradi. Ular chiqish sifatini
-# `output_config.effort` orqali boshqaradi. Eski modellar esa `effort` ni
-# tushunmaydi. Shuning uchun ikkovi bir-birini istisno qiladi.
+# `output_config.effort` ni tushunadigan modellar. 4.6-oila ham kiradi
+# (`low`/`medium`/`high`/`max`), 4.7+ va 5-oila `xhigh` ni ham qo'shadi.
+# Sonnet 4.5 va Haiku 4.5 esa `effort` ni RAD ETADI.
 _EFFORT_MODEL_PREFIXES = (
     "claude-opus-5",
     "claude-sonnet-5",
@@ -27,12 +26,54 @@ _EFFORT_MODEL_PREFIXES = (
     "claude-mythos-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-opus-4-5",
 )
 
 
+def _sdk_accepts_temperature() -> bool:
+    """O'rnatilgan SDK `temperature` ni umuman qabul qiladimi.
+
+    Anthropic SDK 1.x da `temperature`, `top_p` va `top_k` BUTUNLAY olib
+    tashlangan — yuborilsa `TypeError` ko'tariladi (API xatosi emas, ya'ni
+    qayta urinish yordam bermaydi). 0.x da esa ular hamon bor.
+
+    Shuning uchun modelga qarab qaror qilish YETARLI EMAS: SDK imkoniyati
+    ham tekshirilishi kerak. Bu 2026-08-30 da produksiyada aniqlandi —
+    `anthropic>=0.104.0` pini 1.2.0 ni tortib keldi va eski model uchun
+    yuborilgan `temperature` har javobni yiqitdi.
+    """
+    try:
+        import inspect
+        from anthropic.resources.messages import AsyncMessages
+        return "temperature" in inspect.signature(AsyncMessages.create).parameters
+    except Exception:
+        return False  # aniqlab bo'lmasa — yubormaymiz (xavfsiz tomon)
+
+
+# Bir marta hisoblanadi: SDK jarayon davomida o'zgarmaydi.
+SDK_ACCEPTS_TEMPERATURE = _sdk_accepts_temperature()
+
+
 def uses_effort(model: str) -> bool:
-    """Model `output_config.effort` ishlatadimi (va `temperature` ni rad etadimi)."""
+    """Model `output_config.effort` ni qo'llab-quvvatlaydimi."""
     return model.startswith(_EFFORT_MODEL_PREFIXES)
+
+
+def sampling_mode(model: str) -> str:
+    """Chaqiruvda nima yuborilishini aytadi: 'effort', 'temperature' yoki 'none'.
+
+    'none' — model `effort` ni bilmaydi (masalan Haiku 4.5) VA SDK
+    `temperature` ni qabul qilmaydi. Bunda hech nima yuborilmaydi va model
+    o'z standart qiymatida ishlaydi. Bu sifatni biroz boshqarib bo'lmasligini
+    bildiradi, lekin chaqiruv ISHLAYDI — yiqilishdan ko'ra yaxshiroq.
+    """
+    if uses_effort(model):
+        return "effort"
+    if SDK_ACCEPTS_TEMPERATURE:
+        return "temperature"
+    return "none"
 
 
 _EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")

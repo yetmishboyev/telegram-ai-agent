@@ -4,7 +4,7 @@ from typing import Any
 from loguru import logger
 
 from app.ai import usage_log
-from app.ai.models import ModelTier, effort_for_temperature, uses_effort
+from app.ai.models import ModelTier, effort_for_temperature, sampling_mode
 from app.config import settings
 
 
@@ -138,12 +138,15 @@ class BaseAgent(ABC):
 
         output_config: dict[str, Any] = {}
 
-        # Effort va temperature bir-birini istisno qiladi: yangi modellar
-        # temperature'ni rad etadi (400), eskilari effort'ni tushunmaydi.
-        if uses_effort(self._model):
+        # Effort va temperature bir-birini istisno qiladi. Qaysi biri
+        # yuborilishini MODEL va SDK birgalikda hal qiladi — SDK 1.x da
+        # `temperature` umuman yo'q (qarang: models.sampling_mode).
+        mode = sampling_mode(self._model)
+        if mode == "effort":
             output_config["effort"] = effort_for_temperature(temperature, self.tier.value)
-        else:
+        elif mode == "temperature":
             kwargs["temperature"] = temperature
+        # mode == "none" → hech nima yuborilmaydi, model standart qiymatida ishlaydi
 
         structured = bool(response_schema) and _structured_output_enabled()
         if structured:
