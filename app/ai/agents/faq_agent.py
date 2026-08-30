@@ -19,15 +19,24 @@ class FaqAgent(BaseAgent):
     async def generate(
         self,
         user_question: str,
-        faq_question: str,
-        faq_answer: str,
+        candidates: list[dict],
         lang: str = "uz",
     ) -> str | None:
-        """Bilimga asoslanib javob qaytaradi; mos kelmasa None."""
+        """Nomzodlar ichidan mos bilimga tayanib javob qaytaradi; mos kelmasa None.
+
+        Nomzodlar BITTA chaqiruvda beriladi: qidiruv tartibi ishonchsiz, ya'ni
+        to'g'ri javob birinchi o'rinda bo'lmasligi mumkin. Model o'zi tanlaydi.
+        """
+        if not candidates:
+            return None
+
+        blocks = "\n\n".join(
+            f"[BILIM {i}]\nSAVOL: {c['question']}\nJAVOB: {c['answer']}"
+            for i, c in enumerate(candidates, 1)
+        )
         content = (
-            f"Bilim (Shaxzodbek tasdiqlagan):\n"
-            f"SAVOL: {faq_question}\n"
-            f"JAVOB: {faq_answer}\n\n"
+            f"Shaxzodbek tasdiqlagan bilimlar ({len(candidates)} ta nomzod):\n\n"
+            f"{blocks}\n\n"
             f"Foydalanuvchi savoli ({lang} tilida):\n{user_question}"
         )
         try:

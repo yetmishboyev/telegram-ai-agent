@@ -19,10 +19,14 @@ def _analysis(**o):
     return MessageAnalysis(**base)
 
 
+def _cand(q, a, faq_id=1, sim=0.8):
+    return {"question": q, "answer": a, "faq_id": faq_id, "similarity": sim}
+
+
 @pytest.mark.asyncio
 async def test_faq_agent_no_answer_returns_none():
     with patch.object(faq_agent, "_call_llm", AsyncMock(return_value="NO_ANSWER")):
-        r = await faq_agent.generate("savol", "faq savol", "faq javob", "uz")
+        r = await faq_agent.generate("savol", [_cand("faq savol", "faq javob")], "uz")
     assert r is None
 
 
@@ -31,24 +35,56 @@ async def test_faq_agent_returns_grounded_answer():
     with patch.object(
         faq_agent, "_call_llm", AsyncMock(return_value="Narx loyihaga bog'liq.")
     ):
-        r = await faq_agent.generate("qancha turadi", "narx qancha", "loyihaga bog'liq", "uz")
+        r = await faq_agent.generate(
+            "qancha turadi", [_cand("narx qancha", "loyihaga bog'liq")], "uz")
     assert r == "Narx loyihaga bog'liq."
 
 
 @pytest.mark.asyncio
+async def test_faq_agent_receives_every_candidate():
+    """Barcha nomzodlar promptga tushishi kerak — to'g'risi 2-o'rinda bo'lishi mumkin."""
+    captured = {}
+
+    async def spy(messages, **kw):
+        captured["prompt"] = messages[0]["content"]
+        return "javob"
+
+    cands = [_cand("noto'g'ri savol", "noto'g'ri javob", 1, 0.67),
+             _cand("to'g'ri savol", "to'g'ri javob", 2, 0.61)]
+    with patch.object(faq_agent, "_call_llm", AsyncMock(side_effect=spy)):
+        await faq_agent.generate("foydalanuvchi savoli", cands, "uz")
+
+    assert "to'g'ri javob" in captured["prompt"], "2-nomzod ham promptda bo'lishi shart"
+    assert "noto'g'ri javob" in captured["prompt"]
+    assert "[BILIM 1]" in captured["prompt"] and "[BILIM 2]" in captured["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_faq_agent_none_without_candidates():
+    assert await faq_agent.generate("savol", [], "uz") is None
+
+
+@pytest.mark.asyncio
 async def test_try_answer_none_when_no_match():
-    with patch.object(faq_service, "search", AsyncMock(return_value=None)):
+    with patch.object(faq_service, "search", AsyncMock(return_value=[])):
         r = await faq_service.try_answer("tasodifiy savol", "uz")
     assert r is None
 
 
 @pytest.mark.asyncio
 async def test_try_answer_uses_agent_on_match():
-    match = {"question": "narx qancha", "answer": "loyihaga bog'liq", "faq_id": 1, "similarity": 0.8}
-    with patch.object(faq_service, "search", AsyncMock(return_value=match)), \
+    with patch.object(faq_service, "search",
+                      AsyncMock(return_value=[_cand("narx qancha", "loyihaga bog'liq")])), \
          patch.object(faq_agent, "generate", AsyncMock(return_value="Narx loyihaga bog'liq.")):
         r = await faq_service.try_answer("qancha turadi", "uz")
     assert r == "Narx loyihaga bog'liq."
+
+
+@pytest.mark.asyncio
+async def test_try_answer_skips_candidates_without_answer():
+    with patch.object(faq_service, "search", AsyncMock(return_value=[
+            {"question": "q", "answer": "", "faq_id": 1, "similarity": 0.9}])):
+        assert await faq_service.try_answer("savol", "uz") is None
 
 
 @pytest.mark.asyncio
@@ -80,9 +116,9 @@ async def test_add_search_remove_faq_integration():
         "Konsalting narxi loyiha hajmiga bog'liq, aniq narx uchun bog'laning.",
     )
     try:
-        match = await faq_service.search("konsalting qancha pul turadi")
-        assert match is not None, "yaqin savol topilishi kerak edi"
-        assert match["faq_id"] == faq_id
-        assert "loyiha" in match["answer"].lower()
+        matches = await faq_service.search("konsalting qancha pul turadi")
+        assert matches, "yaqin savol topilishi kerak edi"
+        ids = [m["faq_id"] for m in matches]
+        assert faq_id in ids, f"qo'shilgan FAQ nomzodlar orasida bo'lishi kerak: {ids}"
     finally:
         await faq_service.remove_faq(faq_id)

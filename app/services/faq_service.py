@@ -23,53 +23,83 @@ from app.repositories.faq_repo import (
 # mos kelmagan bilimda u NO_ANSWER qaytaradi va xabar eskalatsiyaga tushadi.
 FAQ_MATCH_THRESHOLD = 0.40
 
+# Agentga beriladigan nomzodlar soni. Tartib ishonchsiz bo'lgani uchun bittasi
+# yetarli emas; ko'p bo'lsa prompt shishadi va noto'g'ri tanlash ehtimoli oshadi.
+FAQ_CANDIDATES = 3
+
 
 class FaqService:
-    async def search(self, query: str) -> dict | None:
-        """Savolga eng mos FAQ ni qaytaradi (o'xshashlik chegaradan yuqori bo'lsa)."""
+    async def search(self, query: str) -> list[dict]:
+        """Chegaradan o'tgan FAQ nomzodlarini yaqinlik tartibida qaytaradi.
+
+        BIR EMAS, BIR NECHTA nomzod qaytariladi. Sabab: embedding modeli
+        parafrazlarga ~0.4-0.7 beradi va tartib ishonchsiz — to'g'ri javob
+        ikkinchi o'rinda turishi mumkin. Ilgari faqat birinchi nomzod
+        ishlatilardi va u noto'g'ri bo'lsa, undan keyingi TO'G'RI javob
+        umuman ko'rilmasdi (2026-08-30 da aniqlandi: "AI loyihalaringiz
+        qanday?" savoli CV FAQ iga mos kelib, AI FAQ i yetib bo'lmas edi).
+        """
         try:
             embedding = get_embedder().embed_one(query)
             results = await chroma_client.query(
                 query_embeddings=[embedding],
-                n_results=3,
+                n_results=FAQ_CANDIDATES,
                 where={"type": "faq"},
             )
         except Exception as e:
             logger.warning(f"FAQ qidiruvda xato: {e}")
-            return None
+            return []
 
-        docs = results.get("documents") or [[]]
-        if not docs or not docs[0]:
-            return None
+        docs = (results.get("documents") or [[]])[0]
+        if not docs:
+            return []
 
         metas = results["metadatas"][0]
         dists = results["distances"][0]
-        similarity = 1 - dists[0]  # chroma masofa oshish tartibida — [0] eng yaqin
-        if similarity < FAQ_MATCH_THRESHOLD:
-            logger.debug(f"FAQ mos kelmadi (o'xshashlik={similarity:.2f})")
-            return None
 
-        return {
-            "question": docs[0][0],
-            "answer": metas[0].get("answer", ""),
-            "faq_id": metas[0].get("faq_id"),
-            "similarity": round(similarity, 4),
-        }
+        candidates = []
+        for doc, meta, dist in zip(docs, metas, dists):
+            similarity = 1 - dist  # chroma masofani oshish tartibida beradi
+            if similarity < FAQ_MATCH_THRESHOLD:
+                continue
+            candidates.append({
+                "question": doc,
+                "answer": meta.get("answer", ""),
+                "faq_id": meta.get("faq_id"),
+                "similarity": round(similarity, 4),
+            })
+        if not candidates:
+            logger.debug("FAQ mos kelmadi (barcha nomzodlar chegaradan past)")
+        return candidates
+
+    async def search_best(self, query: str) -> dict | None:
+        """Eng yaqin bitta nomzod (dashboard va testlar uchun qulaylik)."""
+        candidates = await self.search(query)
+        return candidates[0] if candidates else None
 
     async def try_answer(self, text: str, lang: str) -> str | None:
-        """Bilim bazasidan javob topilsa qaytaradi, aks holda None."""
-        match = await self.search(text)
-        if not match or not match.get("answer"):
+        """Bilim bazasidan javob topilsa qaytaradi, aks holda None.
+
+        Barcha nomzodlar agentga BITTA chaqiruvda beriladi — u mos kelganini
+        tanlaydi yoki hech biri to'g'ri kelmasa NO_ANSWER qaytaradi. Ketma-ket
+        chaqirish ham mumkin edi, lekin u har xabarda bir necha LLM so'rovi
+        degani bo'lardi: retrieval shovqinli, ya'ni chegaradan deyarli har doim
+        kimdir o'tadi.
+        """
+        candidates = [c for c in await self.search(text) if c.get("answer")]
+        if not candidates:
             return None
+
         answer = await faq_agent.generate(
             user_question=text,
-            faq_question=match["question"],
-            faq_answer=match["answer"],
+            candidates=candidates,
             lang=lang,
         )
         if answer:
             logger.info(
-                f"FAQ javobi berildi (o'xshashlik={match['similarity']}, faq_id={match['faq_id']})"
+                f"FAQ javobi berildi ({len(candidates)} nomzoddan; "
+                f"eng yaqini: faq_id={candidates[0]['faq_id']}, "
+                f"o'xshashlik={candidates[0]['similarity']})"
             )
         return answer
 
