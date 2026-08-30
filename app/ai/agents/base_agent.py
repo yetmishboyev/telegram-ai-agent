@@ -4,7 +4,9 @@ from typing import Any
 from loguru import logger
 
 from app.ai import usage_log
-from app.ai.models import ModelTier, effort_for_temperature, sampling_mode
+from app.ai.models import (
+    ModelTier, effort_for_temperature, min_output_tokens, sampling_mode,
+)
 from app.config import settings
 
 
@@ -127,6 +129,16 @@ class BaseAgent(ABC):
     ) -> tuple[str, dict]:
         from anthropic import AsyncAnthropic
         client: AsyncAnthropic = self._client  # type: ignore
+
+        # Fikrlash tokenlari ham shu byudjetdan yeyiladi — juda past shift
+        # qo'yilsa model o'ylab tugatadi va matn qaytarmaydi (bo'sh satr).
+        floor = min_output_tokens(self._model)
+        if max_tokens < floor:
+            logger.debug(
+                f"{self._agent_name}: max_tokens {max_tokens} → {floor} "
+                f"(fikrlash byudjeti uchun)"
+            )
+            max_tokens = floor
 
         kwargs: dict[str, Any] = {
             "model": self._model,

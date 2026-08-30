@@ -345,6 +345,80 @@ class ChannelPoster:
         except Exception as e:
             logger.error(f"Taqvim posti xatosi ({fmt}): {e}")
 
+    # ─── ertalabki ob-havo ──────────────────────────────────────────────────────
+
+    async def post_weather(self) -> None:
+        """07:00 — O'zbekiston ob-havosi. TasdiqlashSIZ to'g'ridan-to'g'ri kanalga.
+
+        Nega tasdiqlash yo'q: bu faktik ma'lumot, har kuni ertalab tugma bosish
+        ma'nosiz. Nega xavfsiz: raqamlar API dan keladi, LLM faqat bir gaplik
+        maslahat yozadi. Ma'lumot olinmasa post UMUMAN yuborilmaydi — noto'g'ri
+        ob-havodan ko'ra post bo'lmagani yaxshi.
+        """
+        from app.services import weather
+
+        rows = await weather.fetch()
+        if not rows:
+            logger.warning("Ob-havo ma'lumoti olinmadi — post o'tkazib yuborildi")
+            return
+
+        comment = await self._weather_comment(rows)
+        text = weather.format_post(rows, comment)
+
+        message_id = await self._send_to_channel(text)
+        if not message_id:
+            logger.error("Ob-havo posti kanalga yuborilmadi")
+            return
+
+        await self._save_channel_post(
+            telegram_message_id=message_id,
+            post_type="weather",
+            topic=weather.uzbek_date(),
+            text=text,
+        )
+        logger.info(f"Ob-havo posti yuborildi ({len(rows)} shahar)")
+
+    async def _weather_comment(self, rows: list[dict]) -> str:
+        """Bir gaplik maslahat. Xato bo'lsa bo'sh — post baribir chiqadi.
+
+        Modelga RAQAM YOZISH TAQIQLANADI: barcha sonlar postda allaqachon bor
+        va ular API dan kelgan. Model raqam yozsa, u to'qima bo'lardi.
+        """
+        from app.services import weather
+        from app.services.news_fetcher import news_fetcher
+
+        facts = weather.summarize(rows)
+        prompt = (
+            "Bugungi O'zbekiston ob-havosi bo'yicha faktlar:\n"
+            f"- Toshkent: {facts['toshkent']}\n"
+            f"- Eng issiq: {facts['eng_issiq']}\n"
+            f"- Eng salqin: {facts['eng_salqin']}\n"
+            f"- Yomg'ir kutilayotgan shaharlar: "
+            f"{', '.join(facts['yomgirli_shaharlar']) or 'yo`q'}\n\n"
+            "Shu faktlarga qarab o'quvchiga BITTA gaplik amaliy maslahat yoz "
+            "(masalan issiqda suv ichish, yomg'irda soyabon, salqinda kiyim).\n\n"
+            "Qat'iy qoidalar:\n"
+            "- RAQAM YOZMA (harorat, foiz, gradus) — ular postda allaqachon bor.\n"
+            "- Bitta gap, 12 so'zdan oshmasin.\n"
+            "- O'zbek lotin alifbosida, iliq va oddiy ohangda.\n"
+            "- Faqat gapning o'zini qaytar, tirnoqsiz va izohsiz."
+        )
+        try:
+            comment = await news_fetcher._call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6, max_tokens=1024,
+            )
+        except Exception as e:
+            logger.warning(f"Ob-havo izohi yozilmadi: {e}")
+            return ""
+
+        comment = comment.strip().strip('"').strip()
+        # Model qoidani buzib raqam yozsa — izohni tashlaymiz, post raqamsiz chiqadi
+        if any(ch.isdigit() for ch in comment):
+            logger.warning(f"Ob-havo izohida raqam bor — tashlab yuborildi: {comment[:60]}")
+            return ""
+        return comment[:200]
+
     async def post_educational(self) -> None:
         """09:00 — AI ta'limiy post (egaga tasdiqlashga yuboriladi)."""
         try:

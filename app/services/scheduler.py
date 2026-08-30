@@ -22,6 +22,15 @@ class SchedulerService:
             misfire_grace_time=300,
         )
 
+        # Har kuni 07:00 — O'zbekiston ob-havosi (tasdiqlashsiz, faktik ma'lumot)
+        self._scheduler.add_job(
+            func=channel_poster.post_weather,
+            trigger=CronTrigger(hour=7, minute=0, timezone=self._tz),
+            id="channel_weather_morning",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
+
         # Du-Ju (0-4): 09:00 — haftalik taqvim bo'yicha post
         # (Du/Pay: ta'limiy · Se/Ju: amaliy · Chor: vosita sharhi)
         self._scheduler.add_job(
@@ -72,8 +81,8 @@ class SchedulerService:
         self._scheduler.start()
         logger.info(f"Scheduler ishga tushdi: har kuni {reminder_hour:02d}:00 (Toshkent vaqti)")
         logger.info(
-            "Kanal taqvimi: Du/Pay ta'lim · Se/Ju amaliy · Chor vosita (09:00) | "
-            "Du-Ju 12:00 yangilik | Sha dam | Yak 12:00 dayjest"
+            "Kanal taqvimi: har kuni 07:00 ob-havo | Du/Pay ta'lim · Se/Ju amaliy · "
+            "Chor vosita (09:00) | Du-Ju 12:00 yangilik | Sha dam | Yak 12:00 dayjest"
         )
 
     def stop(self) -> None:

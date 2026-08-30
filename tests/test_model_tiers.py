@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.ai.models import (
-    ModelTier, SDK_ACCEPTS_TEMPERATURE, effort_for_temperature,
-    estimate_cost_usd, sampling_mode, uses_effort,
+    MIN_OUTPUT_TOKENS_WITH_THINKING, ModelTier, SDK_ACCEPTS_TEMPERATURE,
+    effort_for_temperature, estimate_cost_usd, min_output_tokens,
+    sampling_mode, uses_effort,
 )
 from app.ai.agents.base_agent import BaseAgent
 from app.config import settings
@@ -251,3 +252,56 @@ def test_cache_read_is_cheaper_than_fresh_input():
 
 def test_unknown_model_returns_none_instead_of_guessing():
     assert estimate_cost_usd("qandaydir-model", input_tokens=1000) is None
+
+
+# ─── fikrlash byudjeti ─────────────────────────────────────────────────────────
+
+def test_thinking_models_get_a_token_floor():
+    assert min_output_tokens("claude-opus-5") == MIN_OUTPUT_TOKENS_WITH_THINKING
+    assert min_output_tokens("claude-sonnet-5") == MIN_OUTPUT_TOKENS_WITH_THINKING
+
+
+def test_models_without_thinking_are_not_raised():
+    assert min_output_tokens("claude-haiku-4-5") == 1
+
+
+@pytest.mark.asyncio
+async def test_small_budget_is_raised_for_thinking_models():
+    """Past shift bilan model o'ylab tugatadi va MATN QAYTARMAYDI.
+
+    O'lchangan (2026-08-30, claude-opus-5): max_tokens=100 da javob bo'sh
+    keldi — xato ham berilmadi, shunchaki matn bloki yo'q edi.
+    """
+    agent = _Probe()
+    agent._model = "claude-opus-5"
+    create = AsyncMock(return_value=_fake_response())
+    with patch.object(agent, "_client") as client, patch("app.ai.usage_log.record"):
+        client.messages.create = create
+        await agent._call_llm(messages=[{"role": "user", "content": "x"}], max_tokens=100)
+
+    assert create.call_args.kwargs["max_tokens"] == MIN_OUTPUT_TOKENS_WITH_THINKING
+
+
+@pytest.mark.asyncio
+async def test_generous_budget_is_left_alone():
+    agent = _Probe()
+    agent._model = "claude-opus-5"
+    create = AsyncMock(return_value=_fake_response())
+    with patch.object(agent, "_client") as client, patch("app.ai.usage_log.record"):
+        client.messages.create = create
+        await agent._call_llm(messages=[{"role": "user", "content": "x"}], max_tokens=4000)
+
+    assert create.call_args.kwargs["max_tokens"] == 4000
+
+
+@pytest.mark.asyncio
+async def test_haiku_keeps_its_small_budget():
+    """Haiku 4.5 da fikrlash yo'q — byudjetni ko'tarish bekorga token sarflashi mumkin."""
+    agent = _Probe()
+    agent._model = "claude-haiku-4-5"
+    create = AsyncMock(return_value=_fake_response())
+    with patch.object(agent, "_client") as client, patch("app.ai.usage_log.record"):
+        client.messages.create = create
+        await agent._call_llm(messages=[{"role": "user", "content": "x"}], max_tokens=256)
+
+    assert create.call_args.kwargs["max_tokens"] == 256

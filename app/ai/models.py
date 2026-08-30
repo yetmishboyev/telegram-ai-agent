@@ -76,6 +76,17 @@ def sampling_mode(model: str) -> str:
     return "none"
 
 
+# `thinking` yoqilgan modellarda fikrlash tokenlari HAM `max_tokens` byudjetidan
+# yeyiladi. Byudjet kichik bo'lsa model o'ylab tugatadi va MATN BLOKI umuman
+# qaytmaydi — chaqiruv xato bermaydi, shunchaki bo'sh satr keladi.
+#
+# O'lchangan (2026-08-30, claude-opus-5): max_tokens=100 → bo'sh; 300 → ishlaydi.
+# Chegara ehtiyot zaxirasi bilan olingan, chunki adaptive thinking har so'rovda
+# qancha o'ylashni O'ZI hal qiladi — bugun yetgan byudjet ertaga yetmasligi mumkin.
+#
+# `max_tokens` bu SHIFT, sarf emas: qisqa javobda ortiqcha token yozilmaydi.
+MIN_OUTPUT_TOKENS_WITH_THINKING = 1024
+
 _EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
 
 # Qatlam uchun ruxsat etilgan ENG YUQORI effort. Sabab — kechikish: foydalanuvchi
@@ -154,3 +165,8 @@ def estimate_cost_usd(
         + output_tokens * out_rate
     ) / 1_000_000
     return round(total, 8)
+
+
+def min_output_tokens(model: str) -> int:
+    """Model uchun `max_tokens` ning eng past xavfsiz qiymati."""
+    return MIN_OUTPUT_TOKENS_WITH_THINKING if uses_effort(model) else 1
