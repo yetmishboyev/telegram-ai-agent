@@ -294,6 +294,52 @@ class SubscriberSnapshot(Base):
     )
 
 
+class NoteKind(str, PyEnum):
+    """Eslatma turi — so'nish tezligini shu belgilaydi."""
+
+    FIKR = "fikr"          # o'z fikri, kuzatuv
+    MAQOLA = "maqola"      # o'qilgan maqola, havola
+    UCHRASHUV = "uchrashuv"
+    SHAXS = "shaxs"        # odam haqida
+    LOYIHA = "loyiha"
+
+
+class Note(Base):
+    """Ikkinchi miya — egadan kelgan har qanday bilim bo'lagi.
+
+    So'nish uchun uchta maydon: `access_count`, `last_touched`, `kind`.
+    Qatlam (core/active/warm/cold/archive) USTUNDA SAQLANMAYDI — u shu
+    uchtasidan kelib chiqadigan sof funksiya va o'qish paytida hisoblanadi.
+    Aks holda uni yangilab turadigan tunlik vazifa kerak bo'lardi va
+    "qatlam eskirib qoldi" degan holat paydo bo'lardi.
+    """
+
+    __tablename__ = "notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(16), default=NoteKind.FIKR.value, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # LLM qisqartmasi — qidiruv natijasida va brifingda shu ko'rsatiladi
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    source_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    source_kind: Mapped[str] = mapped_column(String(16), default="matn")  # matn/havola/rasm/hujjat
+    vector_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    # So'nish hisobi
+    access_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_touched: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    # `true` bo'lsa hech qachon so'nmaydi (maqsadlar, joriy loyihalar)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class AgentLog(Base):
     """Agent faoliyati loglari"""
 

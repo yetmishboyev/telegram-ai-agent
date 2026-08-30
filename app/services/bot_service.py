@@ -20,6 +20,7 @@ MAIN_BUTTONS = [
     [Button.inline("📋 Bugungi reja", b"view:today")],
     [Button.inline("📢 Kanal posti", b"newpost:menu"),
      Button.inline("🧠 Bilim bazasi", b"faq:menu")],
+    [Button.inline("💡 Ikkinchi miya", b"note:menu")],
 ]
 
 CANCEL_ROW = [[Button.inline("❌ Bekor qilish", b"cancel")]]
@@ -120,16 +121,38 @@ class BotService:
             await self._send_faq_menu(event.chat_id)
             return
 
+        if text.startswith("/qidir"):
+            query = text[len("/qidir"):].strip()
+            if not query:
+                await self._set_state({"step": "note_search"})
+                await self._client.send_message(
+                    event.chat_id, "🔎 Nimani qidiray?", buttons=CANCEL_ROW)
+            else:
+                await self._search_notes(event.chat_id, query)
+            return
+
+        if text in ("/miya", "/eslatma"):
+            await self._send_note_menu(event.chat_id)
+            return
+
         if text in ("/start", "/menu", "/reja", "/plan", "/help"):
             await self._send_main_menu(event.chat_id)
             return
 
         state = await self._get_state()
         if not state:
-            await self._send_main_menu(event.chat_id)
+            # Holat yo'q va buyruq emas → bu ESLATMA. Ikkinchi miyaning
+            # asosiy kirish nuqtasi shu: menyu bosish shart emas, shunchaki
+            # yozasiz. Ilgari bu yerda menyu qaytarilardi.
+            await self._save_note(event, text)
             return
 
         step = state.get("step")
+
+        if step == "note_search":
+            await self._set_state(None)
+            await self._search_notes(event.chat_id, text)
+            return
 
         if step == "relaying":
             await self._handle_relay(event, state, text)
@@ -277,6 +300,20 @@ class BotService:
                 f"✍️ {name} ({target_id}) ga javobingizni yozing:",
                 buttons=CANCEL_ROW,
             )
+
+        elif data == "note:menu":
+            await self._show_note_menu(event)
+
+        elif data == "note:search":
+            await self._set_state({"step": "note_search"})
+            await event.edit("🔎 Nimani qidiray?\n\nSavolni odatiy tilda yozing — "
+                             "masalan «RAG haqida nima yozgandim?»", buttons=CANCEL_ROW)
+
+        elif data == "note:recent":
+            await self._show_recent_notes(event)
+
+        elif data.startswith("note_open:"):
+            await self._open_note(event, int(data.split(":", 1)[1]))
 
         elif data == "faq:menu":
             await self._show_faq_menu(event)
@@ -626,6 +663,147 @@ class BotService:
         else:
             await event.edit("❌ Kanalga yuborishda xato yuz berdi.")
 
+    # ─── ikkinchi miya ──────────────────────────────────────────────────────────
+
+    NOTE_BUTTONS = [
+        [Button.inline("🔎 Qidirish", b"note:search")],
+        [Button.inline("🕐 So'nggilari", b"note:recent")],
+        [Button.inline("🔙 Menyu", b"menu")],
+    ]
+
+    async def _note_menu_text(self) -> str:
+        from app.services.notes import note_service
+        try:
+            st = await note_service.stats()
+        except Exception:
+            st = {"jami": 0, "qatlamlar": {}}
+        tiers = st.get("qatlamlar", {})
+        order = [("core", "yodda"), ("active", "faol"), ("warm", "iliq"),
+                 ("cold", "sovuq"), ("archive", "arxiv")]
+        lines = [f"💡 <b>Ikkinchi miya</b> — {st['jami']} ta eslatma\n"]
+        if st["jami"]:
+            for key, label in order:
+                if tiers.get(key):
+                    lines.append(f"  {label}: {tiers[key]}")
+            lines.append("")
+        lines.append(
+            "Menyusiz ham ishlaydi: shu yerga <b>shunchaki yozing</b> — "
+            "fikr, havola yoki eslatma saqlanadi.\n"
+            "Qidirish: <code>/qidir savol</code>"
+        )
+        return "\n".join(lines)
+
+    async def _send_note_menu(self, chat_id) -> None:
+        await self._client.send_message(
+            chat_id, await self._note_menu_text(),
+            parse_mode="html", buttons=self.NOTE_BUTTONS)
+
+    async def _show_note_menu(self, event) -> None:
+        try:
+            await event.edit(await self._note_menu_text(),
+                             parse_mode="html", buttons=self.NOTE_BUTTONS)
+        except MessageNotModifiedError:
+            pass
+
+    async def _save_note(self, event, text: str) -> None:
+        """Holatsiz matn — eslatma sifatida saqlanadi."""
+        from app.services.notes import note_service
+
+        note = await note_service.save(text)
+        if not note:
+            return
+        kinds = {"fikr": "💭", "maqola": "📄", "uchrashuv": "🤝",
+                 "shaxs": "👤", "loyiha": "🚀"}
+        emoji = kinds.get(note["kind"], "💭")
+        body = [f"{emoji} <b>{note['title']}</b>"]
+        if note.get("summary"):
+            body.append(f"\n{note['summary']}")
+        await self._client.send_message(
+            event.chat_id, "\n".join(body), parse_mode="html",
+            buttons=[[Button.inline("💡 Ikkinchi miya", b"note:menu"),
+                      Button.inline("📅 Menyu", b"menu")]],
+        )
+
+    async def _search_notes(self, chat_id, query: str) -> None:
+        from app.services.notes import note_service
+
+        found = await note_service.search(query, limit=5)
+        if not found:
+            await self._client.send_message(
+                chat_id, f"🔎 «{query}» bo'yicha eslatma topilmadi.",
+                buttons=[[Button.inline("💡 Ikkinchi miya", b"note:menu")]])
+            return
+
+        lines = [f"🔎 <b>«{query}»</b> — {len(found)} ta topildi\n"]
+        rows = []
+        for i, n in enumerate(found, 1):
+            when = n["created_at"].strftime("%d.%m.%Y")
+            lines.append(f"{i}. <b>{n['title']}</b>  <i>{when}</i>")
+            if n.get("summary"):
+                lines.append(f"   {n['summary'][:120]}")
+            rows.append([Button.inline(f"{i}. ochish", f"note_open:{n['id']}".encode())])
+
+        await self._client.send_message(
+            chat_id, "\n".join(lines), parse_mode="html",
+            buttons=rows + [[Button.inline("💡 Ikkinchi miya", b"note:menu")]])
+
+    async def _open_note(self, event, note_id: int) -> None:
+        """To'liq matnni ko'rsatadi. Bu HAQIQIY teginish — so'nish sekinlashadi."""
+        from sqlalchemy import select
+        from app.database.models import Note
+        from app.database.session import AsyncSessionLocal
+        from app.services.notes import note_service
+
+        async with AsyncSessionLocal() as db:
+            note = (await db.execute(select(Note).where(Note.id == note_id))).scalar_one_or_none()
+        if not note:
+            await event.answer("Topilmadi", alert=True)
+            return
+
+        await note_service.touch(note_id)   # ochish = ishlatish
+
+        when = note.created_at.strftime("%d.%m.%Y")
+        text = (f"<b>{note.title}</b>\n<i>{note.kind} · {when}</i>\n\n"
+                f"{note.body[:3000]}")
+        if note.source_url:
+            text += f"\n\n🔗 {note.source_url}"
+        try:
+            await event.edit(text, parse_mode="html",
+                             buttons=[[Button.inline("💡 Ikkinchi miya", b"note:menu")]])
+        except MessageNotModifiedError:
+            pass
+
+    async def _show_recent_notes(self, event) -> None:
+        from sqlalchemy import select, desc
+        from app.database.models import Note
+        from app.database.session import AsyncSessionLocal
+        from app.services.notes import tier
+
+        async with AsyncSessionLocal() as db:
+            notes = (await db.execute(
+                select(Note).order_by(desc(Note.created_at)).limit(10)
+            )).scalars().all()
+
+        if not notes:
+            await event.edit("Hali eslatma yo'q. Shu yerga shunchaki yozing.",
+                             buttons=self.NOTE_BUTTONS)
+            return
+
+        labels = {"core": "yodda", "active": "faol", "warm": "iliq",
+                  "cold": "sovuq", "archive": "arxiv"}
+        lines = ["🕐 <b>So'nggi eslatmalar</b>\n"]
+        rows = []
+        for i, n in enumerate(notes, 1):
+            t = labels.get(tier(n.kind, n.access_count, n.last_touched, n.pinned), "")
+            lines.append(f"{i}. <b>{n.title}</b>  <i>{n.created_at.strftime('%d.%m')} · {t}</i>")
+            rows.append([Button.inline(f"{i}. ochish", f"note_open:{n.id}".encode())])
+
+        try:
+            await event.edit("\n".join(lines), parse_mode="html",
+                             buttons=rows + [[Button.inline("🔙", b"note:menu")]])
+        except MessageNotModifiedError:
+            pass
+
     # ─── bilim bazasi (FAQ) ─────────────────────────────────────────────────────
 
     async def _faq_count(self) -> int:
@@ -739,12 +917,32 @@ class BotService:
                     f"Bugungi ish rejanggizni belgilang:"
                 )
 
+            # Ikkinchi miyadan eslatmalar — bu halqa bo'lmasa baza o'lik arxiv
+            text += await self._resurfaced_block()
+
             await self._client.send_message(
                 self._owner_id, text, parse_mode="html", buttons=MAIN_BUTTONS
             )
             logger.info("Ertalabki eslatma yuborildi")
         except Exception as e:
             logger.error(f"Ertalabki eslatmada xato: {e}")
+
+    async def _resurfaced_block(self) -> str:
+        """Brifingga qo'shiladigan eslatmalar bloki (xato bo'lsa bo'sh)."""
+        try:
+            from app.services.notes import note_service
+            notes = await note_service.resurface(active=2, archived=1)
+        except Exception as e:
+            logger.warning(f"Eslatmalarni qaytarishda xato: {e}")
+            return ""
+        if not notes:
+            return ""
+
+        lines = ["\n\n💡 <b>Ikkinchi miyangizdan:</b>"]
+        for n in notes:
+            mark = "🔁" if n["tier"] == "archive" else "•"
+            lines.append(f"{mark} <b>{n['title']}</b> — {n['summary'][:110]}")
+        return "\n".join(lines)
 
     # ─── time parsing ─────────────────────────────────────────────────────────
 

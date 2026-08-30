@@ -135,3 +135,18 @@ GROWTH_STRATEGY_SCHEMA: dict = {
     "required": ["holat", "tavsiyalar", "kontent_goyalar", "keyingi_qadam"],
     "additionalProperties": False,
 }
+
+# ─── eslatma tavsifi (notes.NoteService._describe) ────────────────────────────
+NOTE_META_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "kind": {
+            "type": "string",
+            "enum": ["fikr", "maqola", "uchrashuv", "shaxs", "loyiha"],
+        },
+        "summary": {"type": "string"},
+    },
+    "required": ["title", "kind", "summary"],
+    "additionalProperties": False,
+}
