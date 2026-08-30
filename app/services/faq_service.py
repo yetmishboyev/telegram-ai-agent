@@ -23,9 +23,19 @@ from app.repositories.faq_repo import (
 # mos kelmagan bilimda u NO_ANSWER qaytaradi va xabar eskalatsiyaga tushadi.
 FAQ_MATCH_THRESHOLD = 0.40
 
-# Agentga beriladigan nomzodlar soni. Tartib ishonchsiz bo'lgani uchun bittasi
-# yetarli emas; ko'p bo'lsa prompt shishadi va noto'g'ri tanlash ehtimoli oshadi.
-FAQ_CANDIDATES = 3
+# Agentga beriladigan nomzodlar soni.
+#
+# 5 ga qo'yilgan, chunki embedding modeli (paraphrase-multilingual-MiniLM)
+# o'zbekchani yomon tartiblaydi. O'lchangan misol (2026-08-30):
+# "Loyihalaringizni ko'rsam bo'ladimi?" savolida to'g'ri FAQ 4-o'rinda turdi —
+# undan yuqorida CV (0.712), ish (0.610) va tadbir (0.477) FAQ lari edi.
+# 3 ta nomzodda to'g'ri javob umuman ko'rinmasdi.
+#
+# Bu bilim bazasi KICHIK ekaniga tayangan yechim: 5 nomzod hozir deyarli butun
+# bazani qamrab oladi va tanlashni agentga qoldiradi. Baza ~20 dan oshsa bu
+# ishlamay qoladi va retrieval sifatining o'zini tuzatish kerak bo'ladi
+# (kuchliroq embedding modeli yoki kalit so'z + vektor gibrid qidiruvi).
+FAQ_CANDIDATES = 5
 
 
 class FaqService:
