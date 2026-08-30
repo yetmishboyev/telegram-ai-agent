@@ -8,10 +8,15 @@ Sxemalar Pydantic modellaridan chiqarilmadi, qo'lda yozildi: Pydantic
 `$ref`/`$defs` ishlatadi va enum'larni alohida ta'rifga chiqaradi, bu esa
 kerakmas murakkablik. Bu yerdagi tekis sxemalar hujjat vazifasini ham bajaradi.
 
-CHEKLOVLAR: API `number`/`integer` uchun `minimum`/`maximum` ni QABUL
-QILMAYDI (2026-08-30 da jonli tekshirildi — 400 qaytaradi). Diapazon
-promptda aytiladi va qabul qiluvchi tomonda tekshiriladi. `enum` va
-massiv uzunligi cheklovlari esa ishlaydi.
+CHEKLOVLAR (2026-08-30 da jonli API ga qarshi tekshirildi —
+`scripts/probe_schemas.py`). Sxema faqat SHAKLNI belgilaydi, chegaralarni
+emas. Qabul qilinmaydigan xossalar:
+  * `number`/`integer` uchun `minimum`, `maximum`
+  * `array` uchun `maxItems`; `minItems` faqat 0 yoki 1 bo'lishi mumkin
+`enum`, `required` va `additionalProperties` esa ishlaydi.
+
+Diapazon va uzunlik promptda aytiladi hamda qabul qiluvchi kodda
+cheklanadi (masalan `options[:4]`) — sxemadan oldin ham shunday edi.
 """
 
 # ─── xabar tahlili (analysis_agent) ───────────────────────────────────────────
@@ -100,7 +105,7 @@ QUIZ_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "question": {"type": "string"},
-        "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4},
+        "options": {"type": "array", "items": {"type": "string"}},
         "correct_index": {"type": "integer"},
         "explanation": {"type": "string"},
     },
@@ -112,7 +117,7 @@ POLL_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "question": {"type": "string"},
-        "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4},
+        "options": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["question", "options"],
     "additionalProperties": False,
@@ -123,8 +128,8 @@ GROWTH_STRATEGY_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "holat": {"type": "string"},
-        "tavsiyalar": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
-        "kontent_goyalar": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+        "tavsiyalar": {"type": "array", "items": {"type": "string"}},
+        "kontent_goyalar": {"type": "array", "items": {"type": "string"}},
         "keyingi_qadam": {"type": "string"},
     },
     "required": ["holat", "tavsiyalar", "kontent_goyalar", "keyingi_qadam"],

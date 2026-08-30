@@ -180,6 +180,32 @@ def test_schemas_are_well_formed(schema):
     assert set(schema["required"]) <= set(schema["properties"])
 
 
+@pytest.mark.parametrize("name", [n for n in dir(schemas) if n.endswith("_SCHEMA")])
+def test_schemas_avoid_constraints_the_api_rejects(name):
+    """API sxemada faqat SHAKLNI qabul qiladi, chegaralarni emas.
+
+    Jonli tekshirilgan (2026-08-30, scripts/probe_schemas.py): `minimum`,
+    `maximum`, `maxItems` 400 qaytaradi; `minItems` faqat 0 yoki 1 bo'ladi.
+    Bular sxemaga qaytib kirsa strukturali chiqish jimgina o'chib qoladi —
+    zaxira yo'l ishlaydi, lekin foyda yo'qoladi.
+    """
+    banned = {"minimum", "maximum", "maxItems"}
+
+    def walk(node, path="root"):
+        if isinstance(node, dict):
+            found = banned & set(node)
+            assert not found, f"{path} da API rad etadigan xossa: {found}"
+            if node.get("minItems") not in (None, 0, 1):
+                raise AssertionError(f"{path}: minItems faqat 0 yoki 1 bo'lishi mumkin")
+            for k, v in node.items():
+                walk(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{path}[{i}]")
+
+    walk(getattr(schemas, name), name)
+
+
 def test_classification_schema_matches_the_pydantic_model():
     """Sxema va model bir-biridan ajralib ketmasligi kerak."""
     from app.ai.agents.classifier_agent import ClassificationResult, MessageCategory
