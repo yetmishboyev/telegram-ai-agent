@@ -1024,7 +1024,7 @@ Ega izohi (nima o'zgartirilsin):
 
 Xuddi shu formatda, lekin izohga ko'ra tahrirlab, to'liq yangi postni qaytargin.
 Sitata qatorlarini (`> ` bilan boshlanadigan) saqla — ega boshqacha aytmagan bo'lsa.
-Oxiridagi "—" va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchalik avtomatik qo'shiladi.
+Oxiridagi "—", "🔗 Manba: ..." va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchalik avtomatik qo'shiladi.
 """
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],

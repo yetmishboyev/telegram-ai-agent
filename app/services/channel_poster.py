@@ -39,6 +39,28 @@ def _quotes_to_html(text: str) -> str:
     return '\n'.join(result)
 
 
+def _source_html(url: str) -> str:
+    """Yangilik posti uchun manba havolasi qatori.
+
+    Havola MODEL tomonidan emas, kod tomonidan qo'shiladi: model uzun URL'ni
+    qisqartirib yoki buzib yozardi, muharrir qatlami (`critique_and_improve`)
+    esa uni "suv" deb butunlay olib tashlashi mumkin edi. Shuning uchun u
+    tahrirdan KEYIN, o'zgarmas holda biriktiriladi.
+    """
+    if not url:
+        return ""
+    from urllib.parse import urlparse
+    import html as _html
+    try:
+        domain = urlparse(url).netloc.removeprefix("www.")
+    except Exception:
+        return ""
+    if not domain:
+        return ""
+    return (f'\n\n🔗 Manba: <a href="{_html.escape(url, quote=True)}">'
+            f'{_html.escape(domain)}</a>')
+
+
 def _md_to_html(text: str) -> str:
     """Telegram Markdown → HTML (bold, italic, sitata)."""
     # **bold** → <b>bold</b>
@@ -248,7 +270,7 @@ class ChannelPoster:
 
     async def _send_for_approval(
         self, text: str, post_type: str, topic: str = "", style: str = "",
-        category: str = "",
+        category: str = "", source_url: str = "",
     ) -> None:
         """Postni egaga tasdiqlash uchun botda ko'rsatadi."""
         from telethon import Button
@@ -265,7 +287,9 @@ class ChannelPoster:
         text = await news_fetcher.critique_and_improve(text, post_type)
 
         post_id = str(uuid.uuid4())[:8]
-        text_with_footer = _md_to_html(text.rstrip()) + CHANNEL_FOOTER_HTML
+        text_with_footer = (
+            _md_to_html(text.rstrip()) + _source_html(source_url) + CHANNEL_FOOTER_HTML
+        )
 
         r = await get_redis()
         await r.setex(
@@ -274,6 +298,7 @@ class ChannelPoster:
             json.dumps({
                 "text": text_with_footer, "post_type": post_type,
                 "topic": topic, "style": style, "category": category,
+                "source_url": source_url,
             }),
         )
 
@@ -327,6 +352,7 @@ class ChannelPoster:
         await self._send_for_approval(
             new_text, data["post_type"], data.get("topic", ""),
             data.get("style", ""), data.get("category", ""),
+            data.get("source_url", ""),
         )
 
     async def regenerate_new_and_send_for_approval(self, post_id: str) -> None:
@@ -370,9 +396,13 @@ class ChannelPoster:
             await self._send_for_approval(new_text, "free", old_topic, style)
         else:
             # Yangiliklar: tasodifiy tartib — curation boshqa yangilikni tanlaydi
-            new_text, topic, category = await self._build_deep_news(style, shuffled=True)
+            new_text, topic, category, source = await self._build_deep_news(
+                style, shuffled=True
+            )
             if new_text:
-                await self._send_for_approval(new_text, "news", topic, style, category)
+                await self._send_for_approval(
+                    new_text, "news", topic, style, category, source,
+                )
 
     async def refresh_views(self) -> None:
         """Kanalga yuborilgan postlarning ko'rish sonini Telegram'dan yangilaydi."""
@@ -600,11 +630,13 @@ class ChannelPoster:
         try:
             from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
             logger.info("AI yangiliklari yig'ilmoqda (curation uchun keng ro'yxat)...")
-            text, topic, category = await self._build_deep_news(DEFAULT_STYLE)
+            text, topic, category, source = await self._build_deep_news(DEFAULT_STYLE)
             if not text:
                 logger.warning("Yangilik topilmadi — post o'tkazib yuborildi")
                 return
-            await self._send_for_approval(text, "news", topic, DEFAULT_STYLE, category)
+            await self._send_for_approval(
+                text, "news", topic, DEFAULT_STYLE, category, source,
+            )
         except Exception as e:
             logger.error(f"Yangiliklar post xatosi: {e}")
 
@@ -664,10 +696,10 @@ class ChannelPoster:
 
     async def _build_deep_news(
         self, style: str, shuffled: bool = False
-    ) -> tuple[str | None, str, str]:
+    ) -> tuple[str | None, str, str, str]:
         """Keng yangilik ro'yxatidan eng muhimini tanlab, chuqur post tayyorlaydi.
 
-        Returns: (post_matni | None, tanlangan sarlavha, kategoriya).
+        Returns: (post_matni | None, tanlangan sarlavha, kategoriya, manba havolasi).
         """
         from app.services.news_fetcher import news_fetcher, NEWS_POOL_SIZE
         if shuffled:
@@ -677,7 +709,7 @@ class ChannelPoster:
         recent = await self._recent_news_posts()
         picked = await news_fetcher.curate_top_news(items, recent=recent)
         if not picked:
-            return None, "", ""
+            return None, "", "", ""
         item = picked["item"]
         category = picked.get("category", "")
         logger.info(
@@ -686,20 +718,21 @@ class ChannelPoster:
         text = await news_fetcher.generate_deep_news_post(
             item, style, curation_reason=picked["reason"]
         )
-        return text, item["title"][:200], category
+        return text, item["title"][:200], category, item.get("link", "")
 
     async def create_on_demand(self, post_type: str, style: str, topic: str = "") -> None:
         """Bot menyusidan chaqiriladigan on-demand post yaratish (tur + uslub)."""
         try:
             from app.services.news_fetcher import news_fetcher
             category = ""
+            source_url = ""
             if post_type == "educational":
                 topic = topic or news_fetcher.get_todays_topic(
                     await self._recent_topics("educational")
                 )
                 text = await news_fetcher.generate_educational_post(topic, style)
             elif post_type == "news":
-                text, topic, category = await self._build_deep_news(style)
+                text, topic, category, source_url = await self._build_deep_news(style)
                 if not text:
                     await self._notify_owner_text("❌ Hozircha yangilik topilmadi — keyinroq urinib ko'ring.")
                     return
@@ -715,7 +748,9 @@ class ChannelPoster:
                 text = await news_fetcher.generate_tool_review_post(topic, style)
             else:  # free — ega bergan mavzu
                 text = await news_fetcher.generate_free_post(topic, style)
-            await self._send_for_approval(text, post_type, topic, style, category)
+            await self._send_for_approval(
+                text, post_type, topic, style, category, source_url,
+            )
         except Exception as e:
             logger.error(f"On-demand post xatosi: {e}")
 

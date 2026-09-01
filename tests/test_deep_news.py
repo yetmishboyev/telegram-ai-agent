@@ -83,11 +83,12 @@ async def test_build_deep_news_flow():
                                        "category": "mahsulot"})) as cur, \
          patch("app.services.news_fetcher.news_fetcher.generate_deep_news_post",
                AsyncMock(return_value="chuqur post")) as gen:
-        text, topic, category = await channel_poster._build_deep_news("chapani")
+        text, topic, category, source = await channel_poster._build_deep_news("chapani")
 
     assert text == "chuqur post"
     assert topic == "Meta open-sources Llama 5"
     assert category == "mahsulot"
+    assert source == _ITEMS[1]["link"]      # manba havolasi postga chiqadi
     # Nomzod hovuzi kengaytirilgan (ilgari 10 edi) va tarix curation'ga uzatiladi
     assert news.await_args.kwargs["count"] == NEWS_POOL_SIZE
     cur.assert_awaited_once_with(_ITEMS, recent=history)
@@ -98,8 +99,9 @@ async def test_build_deep_news_flow():
 async def test_build_deep_news_none_when_no_items():
     with patch("app.services.news_fetcher.news_fetcher.get_ai_news", AsyncMock(return_value=[])), \
          patch.object(channel_poster, "_recent_news_posts", AsyncMock(return_value=[])):
-        text, topic, category = await channel_poster._build_deep_news("chapani")
+        text, topic, category, source = await channel_poster._build_deep_news("chapani")
     assert text is None
+    assert source == ""
 
 
 @pytest.mark.asyncio
@@ -112,7 +114,7 @@ async def test_build_deep_news_survives_history_db_error():
                AsyncMock(return_value={"item": _ITEMS[0], "reason": "", "category": "biznes"})), \
          patch("app.services.news_fetcher.news_fetcher.generate_deep_news_post",
                AsyncMock(return_value="post")):
-        text, _, category = await channel_poster._build_deep_news("jonli")
+        text, _, category, _src = await channel_poster._build_deep_news("jonli")
     assert text == "post"
     assert category == "biznes"
 
@@ -191,3 +193,74 @@ async def test_curate_returns_category_and_rejects_unknown_one():
     with _llm(json.dumps({"index": 0, "category": "allaqanday-narsa", "reason": "r"})):
         picked = await news_fetcher.curate_top_news(_ITEMS)
     assert picked["category"] == NEWS_FALLBACK_CATEGORY
+
+
+# ─── manba havolasi ────────────────────────────────────────────────────────────
+# Havolani MODEL emas, kod qo'shadi: model uzun URL'ni buzardi va muharrir
+# qatlami uni "suv" deb olib tashlashi mumkin edi.
+
+def test_source_html_renders_domain_as_link():
+    from app.services.channel_poster import _source_html
+    out = _source_html("https://www.techcrunch.com/2026/09/01/openai-ads/")
+    assert 'href="https://www.techcrunch.com/2026/09/01/openai-ads/"' in out
+    assert ">techcrunch.com<" in out       # www. olib tashlanadi
+    assert out.startswith("\n\n🔗 Manba:")
+
+
+def test_source_html_is_empty_without_url():
+    from app.services.channel_poster import _source_html
+    assert _source_html("") == ""
+    assert _source_html("shunchaki-matn") == ""
+
+
+def test_source_html_escapes_hostile_url():
+    from app.services.channel_poster import _source_html
+    out = _source_html('https://x.com/a"><script>alert(1)</script>')
+    assert "<script>" not in out
+    assert "&quot;" in out or "&#x27;" in out or "&lt;" in out
+
+
+@pytest.mark.asyncio
+async def test_approval_text_carries_source_above_the_footer():
+    """Manba tahrirdan KEYIN qo'shiladi va Redisda ham saqlanadi."""
+    import json
+    from app.services.channel_poster import CHANNEL_FOOTER_HTML
+    saved = {}
+
+    class FakeRedis:
+        async def setex(self, key, ttl, value):
+            saved.update(json.loads(value))
+
+    with patch("app.services.news_fetcher.news_fetcher.critique_and_improve",
+               AsyncMock(side_effect=lambda t, k="": t)), \
+         patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())), \
+         patch("app.services.bot_service.bot_service",
+               type("B", (), {"_client": AsyncMock()})):
+        await channel_poster._send_for_approval(
+            "Post matni", "news", "mavzu", "jonli", "mahsulot",
+            "https://venturebeat.com/ai/story",
+        )
+
+    text = saved["text"]
+    assert "venturebeat.com" in text
+    assert text.index("venturebeat.com") < text.index(CHANNEL_FOOTER_HTML.strip()[:20])
+    assert saved["source_url"] == "https://venturebeat.com/ai/story"
+
+
+@pytest.mark.asyncio
+async def test_non_news_post_has_no_source_line():
+    import json
+    saved = {}
+
+    class FakeRedis:
+        async def setex(self, key, ttl, value):
+            saved.update(json.loads(value))
+
+    with patch("app.services.news_fetcher.news_fetcher.critique_and_improve",
+               AsyncMock(side_effect=lambda t, k="": t)), \
+         patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())), \
+         patch("app.services.bot_service.bot_service",
+               type("B", (), {"_client": AsyncMock()})):
+        await channel_poster._send_for_approval("Ta'limiy matn", "educational")
+
+    assert "🔗 Manba" not in saved["text"]
