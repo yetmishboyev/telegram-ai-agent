@@ -54,19 +54,134 @@ def _md_to_html(text: str) -> str:
 
 class ChannelPoster:
 
-    async def _send_to_channel(self, text: str) -> int | None:
-        """To'g'ridan-to'g'ri kanalga yuboradi. Muvaffaqiyatli bo'lsa telegram_message_id qaytaradi."""
+    async def _send_to_channel(self, text: str, post_type: str = "") -> int | None:
+        """Kanalga post yuboradi. Muvaffaqiyatli bo'lsa message_id qaytaradi.
+
+        `post_type` berilsa post uchun muqova kartasi chiziladi va rasm matn
+        ustida ko'rinadi. Karta chizilmasa yoki yuborilmasa post oddiy matn
+        bo'lib chiqadi — rasm hech qachon postni to'sib qo'ymasligi kerak.
+        """
         try:
             from app.services.bot_service import bot_service
             if not bot_service._client:
                 logger.warning("Bot client tayyor emas")
                 return None
+
+            if post_type:
+                card_url = await self._store_card(text, post_type)
+                if card_url:
+                    msg_id = await self._send_with_card(text, card_url)
+                    if msg_id:
+                        return msg_id
+                    logger.warning("Muqovali post o'tmadi — matnli postga qaytildi")
+
             msg = await bot_service._client.send_message(CHANNEL, text, parse_mode="html")
             logger.info(f"Kanal post yuborildi: {text[:60]}...")
             return msg.id
         except Exception as e:
             logger.error(f"Kanal post xatosi: {e}")
             return None
+
+    async def _store_card(self, text: str, post_type: str) -> str | None:
+        """Post uchun muqova kartasini chizib saqlaydi va uning manzilini qaytaradi.
+
+        Karta rasm sifatida EMAS, havola ko'rinishi (link preview) orqali
+        yuboriladi. Sababi o'lchov: Telegram rasm izohi 1024 belgi, postlar esa
+        1200-1900 belgi — ya'ni "rasm + izoh" postni kesib tashlagan bo'lardi.
+        Havola ko'rinishida matn to'liq qoladi va rasm uning ustida turadi.
+
+        Karta chizilmasa yoki Redis ishlamasa `None` qaytadi — post baribir
+        matn ko'rinishida chiqadi.
+        """
+        import base64
+        import uuid as _uuid
+        try:
+            from app.services import post_image
+            from app.services import weather
+            from app.database.redis import get_redis
+            from app.api.routes.cards import CARD_KEY, CARD_TTL
+
+            png = post_image.render_for_post(text, post_type, weather.uzbek_date())
+            if not png:
+                return None
+
+            card_id = _uuid.uuid4().hex[:16]
+            r = await get_redis()
+            await r.setex(
+                CARD_KEY.format(card_id), CARD_TTL,
+                base64.b64encode(png).decode("ascii"),
+            )
+            url = f"{settings.public_base_url.rstrip('/')}/p/{card_id}.png"
+            logger.info(f"Muqova kartasi tayyor ({len(png) // 1024} KB): {url}")
+            return url
+        except Exception as e:
+            logger.warning(f"Muqova kartasi tayyorlanmadi — post rasmsiz chiqadi: {e}")
+            return None
+
+    async def _send_with_card(self, text: str, card_url: str) -> int | None:
+        """Postni muqova kartasi MATN USTIDA turadigan holda yuboradi.
+
+        `invert_media` — havola ko'rinishini matndan yuqoriga chiqaradi,
+        `force_large_media` esa uni kichik belgi emas, katta rasm qilib
+        ko'rsatadi. Telethon'ning yuqori darajali `send_message` metodi bu
+        ikkovini ochib bermaydi, shuning uchun so'rov qo'lda yig'iladi.
+
+        Xato bo'lsa oddiy havola ko'rinishiga, u ham bo'lmasa toza matnga
+        qaytamiz — rasm hech qachon postni to'sib qo'ymasligi kerak.
+        """
+        from app.services.bot_service import bot_service
+        client = bot_service._client
+
+        # Ko'rinmas havola: matnda belgi ko'rinmaydi, lekin Telegram uni o'qiydi
+        marked = f'<a href="{card_url}">\u200b</a>{text}'
+        try:
+            from telethon import helpers
+            from telethon.tl.functions.messages import SendMediaRequest
+            from telethon.tl.types import InputMediaWebPage
+
+            entity = await client.get_input_entity(CHANNEL)
+            message, entities = await client._parse_message_text(marked, "html")
+            result = await client(SendMediaRequest(
+                peer=entity,
+                media=InputMediaWebPage(url=card_url, force_large_media=True),
+                message=message,
+                entities=entities,
+                invert_media=True,          # rasm matn USTIDA
+                random_id=helpers.generate_random_long(),
+            ))
+            msg_id = self._message_id_from(result)
+            if msg_id:
+                logger.info("Kanal posti muqova kartasi bilan yuborildi")
+                return msg_id
+            logger.warning("Karta bilan yuborildi, lekin message_id topilmadi")
+        except Exception as e:
+            logger.warning(f"Katta muqova bilan yuborilmadi ({e}) — oddiy ko'rinishga o'tildi")
+
+        try:
+            msg = await client.send_message(
+                CHANNEL, marked, parse_mode="html", link_preview=True,
+            )
+            return msg.id
+        except Exception as e:
+            logger.error(f"Muqovali post yuborilmadi: {e}")
+            return None
+
+    @staticmethod
+    def _message_id_from(result) -> int | None:
+        """RPC natijasidan yangi xabar id sini oladi.
+
+        `SendMediaRequest` `Updates` qaytaradi va yangi xabar id si turli
+        update turlarida keladi (kanal uchun odatda `UpdateMessageID` yoki
+        `UpdateNewChannelMessage`), shuning uchun ikkovi ham qaraladi.
+        """
+        for update in getattr(result, "updates", []) or []:
+            msg_id = getattr(update, "id", None)
+            if msg_id and type(update).__name__ == "UpdateMessageID":
+                return msg_id
+            message = getattr(update, "message", None)
+            if message is not None and getattr(message, "id", None):
+                return message.id
+        return getattr(result, "id", None)
 
     async def _send_photo_to_channel(self, image: bytes, caption: str) -> int | None:
         """Kanalga rasm + izoh yuboradi. Muvaffaqiyatli bo'lsa message_id qaytaradi."""

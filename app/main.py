@@ -15,6 +15,7 @@ from app.utils.security import hash_password
 from app.middleware.logging import LoggingMiddleware
 from app.api.routes import api_router
 from app.api.routes.dashboard import router as dashboard_router
+from app.api.routes.cards import router as cards_router
 from sqlalchemy import select
 
 
@@ -156,6 +157,9 @@ app.add_middleware(LoggingMiddleware)
 # Routerlar
 app.include_router(api_router)
 app.include_router(dashboard_router)
+# Muqova kartalari — `/api` dan tashqarida, chunki ularni Telegram
+# (sessiyasiz, autentifikatsiyasiz) yuklab oladi.
+app.include_router(cards_router)
 
 # Static fayllar
 static_dir = Path(__file__).parent.parent / "dashboard" / "static"

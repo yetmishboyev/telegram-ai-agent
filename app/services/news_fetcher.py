@@ -314,6 +314,42 @@ _LATIN_RULE = (
     "krill harflarini (а, б, в, г, д...) aralashtirma."
 )
 
+# ─── o'zbek tili sifat qatlami ────────────────────────────────────────────────
+# Postlar grammatik jihatdan to'g'ri edi, lekin O'QISH og'ir edi: model ingliz
+# atamasini tarjimasiz tashlab ketardi ("inference", "fine-tuning"), gaplar
+# ergash gaplar bilan cho'zilardi va bir atama uch postda uch xil yozilardi.
+# Bu qoida barcha generatorlarga qo'shiladi.
+_UZBEK_RULE = (
+    "\n\nO'ZBEK TILI — O'QUVCHI TUSHUNISHI UCHUN:\n"
+    "- Har bir chet atamani BIRINCHI marta ishlatganda qavs ichida oching: "
+    "«inference (modelning javob berish bosqichi)». Keyingi safar qavs shart emas.\n"
+    "- Gaplar QISQA bo'lsin — bittasida bitta fikr. 20 so'zdan uzun gapni ikkiga bo'l.\n"
+    "- Ruscha yoki inglizcha gap qurilishini ko'chirma. «amalga oshirish», "
+    "«hisoblanadi», «tashkil etadi» kabi rasmiy shtamplar o'rniga tirik fe'l ishlat: "
+    "«qiladi», «bo'ladi», «beradi».\n"
+    "- Kitobiy so'z o'rniga kundalik so'zni tanla: «mazkur» emas «shu», "
+    "«ushbu» emas «bu», «shuningdek» emas «yana».\n"
+    "- Atamalarni QUYIDAGI lug'atdagidek yoz — bir atama har postda bir xil "
+    "atalsin, aks holda o'quvchi ularni boshqa-boshqa narsa deb o'ylaydi:\n"
+    + "\n".join(f"  · {en} — {uz}" for en, uz in [
+        ("Large Language Model (LLM)", "katta til modeli"),
+        ("prompt", "so'rov (prompt)"),
+        ("training", "o'qitish"),
+        ("inference", "javob berish bosqichi"),
+        ("fine-tuning", "modelni moslashtirish (fine-tuning)"),
+        ("token", "token (so'z bo'lagi)"),
+        ("embedding", "vektor tasvir (embedding)"),
+        ("hallucination", "to'qib chiqarish (hallucination)"),
+        ("dataset", "ma'lumotlar to'plami"),
+        ("open-source", "ochiq kodli"),
+        ("benchmark", "sinov o'lchovi (benchmark)"),
+        ("context window", "kontekst oynasi"),
+        ("agent", "agent (o'zi harakat qiladigan dastur)"),
+    ])
+    + "\n- Yoz-da tekshir: notanish odam bu postni bir marta o'qib tushunadimi? "
+      "Tushunmasa — atamani soddalashtir yoki misol qo'sh."
+)
+
 # Postning asosiy joyi ko'zga tashlanib turishi uchun — `> ` qatorlari
 # `channel_poster._md_to_html` da Telegram sitata blokiga aylanadi.
 _QUOTE_RULE = (
@@ -682,7 +718,7 @@ Talablar:
 - Hajmi: 220–280 so'z.
 - Emoji + **qalin sarlavha** qatori bilan boshla. Sarlavha janrga mos bo'lsin va oldingi postlarni eslatmasin — "🎓" ni har safar takrorlashga majbur emassan.
 - Yuqoridagi janr tuzilishiga amal qil, lekin bo'lim sarlavhalarini so'zma-so'z yozma — matn tabiiy oqsin.
-{_QUOTE_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}
 - Oxiriga MAVZUGA mos 3-4 ta hashtag yoz (aynan shu mavzudan kelib chiqib — har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma.
 """
         return await self._call_llm(
@@ -844,7 +880,7 @@ Qoidalar:
 - BITTA yangilik, chuqur — boshqa yangiliklar haqida yozma.
 - 180-260 so'z. Telegram Markdown (**qalin**, _kursiv_). Emoji tabiiy, me'yorida.
 - Sarlavha qatori bilan boshla: emoji + **qalin sarlavha** (o'zbekcha, jozibali).
-{_QUOTE_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}
 - Oxiriga 3-4 ta hashtag. Kanal linkini QO'SHMA.
 """
         return await self._call_llm(
@@ -959,7 +995,7 @@ Talablar:
 - Emojilarni matn ichida tabiiy ishlat (haddan oshirmasdan).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
 - Hajmi mavzuga mos bo'lsin: 150-280 so'z.
-{_QUOTE_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}
 - Oxiriga kanal linkini QO'SHMA — u avtomatik qo'shiladi.
 """
         return await self._call_llm(
@@ -1022,7 +1058,7 @@ Umumiy tuzilish:
 - Yakunda o'quvchini harakatga undaydigan tabiiy CTA.
 
 Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — o'quvchi takrorlay oladigan ANIQ QADAMLAR va amallar bo'lsin.
-{_QUOTE_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}
 Oxiriga MAVZUGA mos 3-4 hashtag (har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
@@ -1048,7 +1084,7 @@ Tuzilish:
 - Yakun: o'z bahong (masalan "10 dan 8") + "siz ishlatib ko'rganmisiz?" CTA.
 
 Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima.
-{_QUOTE_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}
 Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
@@ -1067,6 +1103,7 @@ Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
 2. BITTA G'OYA — post bitta aniq fikrga qurilganmi? Chetga chiqishlarni ol.
 3. SUV — takror, umumiy gap, keraksiz kirish so'zlarni qisqart. Har gap qiymat bersin.
 4. OQIM — gaplar tabiiy ulanadimi, o'zbek tili grammatikasi toza va ravonmi?
+4b. TUSHUNARLILIK — chet atama qavs ichida ochilganmi? 20 so'zdan uzun gap bormi (bo'lib tashla)? «amalga oshirish», «hisoblanadi», «mazkur», «ushbu» kabi rasmiy shtamplar tirik so'zga almashtirilganmi? Bir atama post ichida bir xil atalganmi?
 5. CTA — yakunda o'quvchini harakatga undaydigan tabiiy chaqiruv bormi?
 6. FORMAT — Telegram Markdown (**qalin**, _kursiv_) to'g'ri ishlatilganmi, emoji me'yoridami?
 
@@ -1076,6 +1113,7 @@ Qat'iy qoidalar:
 - Uzunlikni sezilarli oshirma (±15% chegarada qol).
 - SITATA: `> ` bilan boshlangan qatorlarni SAQLA (kerak bo'lsa ichidagi gapni kuchaytir, lekin `> ` belgisini olib tashlama). Agar qoralamada sitata bo'lmasa, eng muhim BITTA fikrni alohida qatorga chiqarib `> ` bilan belgila.
 - Hashtaglarni saqla. FAQAT o'zbek LOTIN alifbosida.
+- Atamani soddalashtirganda MA'NOSINI buzma — tushunarlilik aniqlik hisobiga bo'lmasin.
 - FAQAT yakuniy post matnini qaytar — baho, izoh, sarlavha yozma.
 
 Qoralama post:

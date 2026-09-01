@@ -559,7 +559,9 @@ class BotService:
 
         data = json.loads(raw)
         await r.delete(f"pending_post:{post_id}")
-        telegram_message_id = await channel_poster._send_to_channel(data["text"])
+        telegram_message_id = await channel_poster._send_to_channel(
+            data["text"], data.get("post_type", "news"),
+        )
         if telegram_message_id:
             await channel_poster._save_channel_post(
                 telegram_message_id=telegram_message_id,
