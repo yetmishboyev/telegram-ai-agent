@@ -11,25 +11,48 @@ from app.ai.schemas import (
 from app.utils.uz_text import to_latin_uz
 
 
-# Sun'iy intellektga oid RSS manbalar — nufuzli, mustaqil saytlar.
-# Har biri jonli tekshirilgan (2026-07); ishlamay qolsa fetch_rss jimgina o'tkazadi.
+# Sun'iy intellektga oid feed manbalar — nufuzli, mustaqil saytlar.
+# Har biri jonli tekshirilgan (2026-09-01: HTTP 200 + o'qiladigan sana);
+# ishlamay qolsa fetch_rss jimgina o'tkazadi. Holatini `check_sources()`
+# ko'rsatadi — o'lgan feed sezilmay qolmasligi uchun.
 AI_NEWS_FEEDS = [
+    # ── keng qamrovli AI yangiliklari ──
     "https://news.google.com/rss/search?q=artificial+intelligence+AI&hl=en-US&gl=US&ceid=US:en",
     "https://venturebeat.com/category/ai/feed/",
     "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://huggingface.co/blog/feed.xml",
     "https://www.technologyreview.com/feed/",          # MIT Technology Review
     "https://www.wired.com/feed/tag/ai/latest/rss",    # Wired AI
     "https://feeds.arstechnica.com/arstechnica/index", # Ars Technica
-    "https://blog.google/technology/ai/rss/",          # Google AI Blog (birlamchi manba)
     "https://the-decoder.com/feed/",                   # The Decoder (AI-fokus)
+    "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",  # Verge AI (Atom)
+    "https://www.marktechpost.com/feed/",              # MarkTechPost (AI-fokus)
+    # ── birlamchi manbalar: laboratoriyalarning o'z e'lonlari ──
+    "https://openai.com/news/rss.xml",                 # OpenAI
+    "https://blog.google/technology/ai/rss/",          # Google AI
+    "https://deepmind.google/blog/rss.xml",            # Google DeepMind
+    "https://huggingface.co/blog/feed.xml",            # Hugging Face
+    # ── saralangan / tahliliy ──
+    "https://www.techmeme.com/feed.xml",               # Techmeme — sohaning kun tartibi
+    "https://hnrss.org/frontpage?points=200",          # Hacker News (200+ ball)
+    "https://simonwillison.net/atom/everything/",      # Simon Willison — amaliy AI (Atom)
+    "https://jack-clark.net/feed/",                    # Import AI — haftalik tahlil
 ]
 
-# Mashhur AI/texnologiya Telegram kanallari — userbot o'qiydi (jonli tekshirilgan).
+# Bir vaqtda ochiladigan feed ulanishlari soni. Feedlar ilgari BIRIN-KETIN
+# yuklanardi: 15s timeout × 17 feed = eng yomon holatda ~4 daqiqa, ya'ni
+# bitta sekin sayt butun post tayyorlashni kechiktirardi.
+FEED_CONCURRENCY = 8
+
+# Mashhur AI/texnologiya Telegram kanallari — userbot o'qiydi.
+# Kanal ochiq bo'lmasa yoki nomi o'zgargan bo'lsa fetch_telegram_news uni
+# o'tkazib yuboradi; qaysi biri ishlayotganini `check_sources()` ko'rsatadi.
 NEWS_TG_CHANNELS = [
     "@ai_newz",
     "@seeallochnaya",
     "@data_secrets",
+    "@gonzo_ML",
+    "@denissexy",
+    "@ai_machinelearning_big_data",
 ]
 
 # Faqat shu oynadagi yangiliklar "so'nggi" hisoblanadi
@@ -38,8 +61,11 @@ NEWS_FRESHNESS_HOURS = 48
 # Curation'ga beriladigan nomzodlar soni. Ilgari 10 edi — round-robin bitta
 # aylanishda tugab, har manbadan FAQAT 1 ta (bosh sahifadagi eng yangi)
 # sarlavha olinardi. Natijada tanlov doim bir xil "kun mavzusi" doirasida
-# qolib, kanalda bitta tema takrorlanardi. 30 nomzod har manbadan 2-3 ta beradi.
-NEWS_POOL_SIZE = 30
+# qolib, kanalda bitta tema takrorlanardi.
+# Manbalar 12 ta bo'lganda 30 yetardi; hozir ~23 ta (17 feed + 6 kanal), ya'ni
+# 30 nomzod yana har manbadan bittaga tushib qolardi. Hovuz manbalar soniga
+# nisbatan o'sishi kerak — 50 nomzod har manbadan 2-3 ta beradi.
+NEWS_POOL_SIZE = 50
 
 # Tanlangan yangilik oxirgi shu kun ichida chiqqan postlar bilan solishtiriladi
 NEWS_HISTORY_DAYS = 14
@@ -142,7 +168,12 @@ EDUCATIONAL_FORMATS: dict[str, str] = {
     ),
 }
 
-# Amaliy qo'llanma postlari uchun mavzular (rotatsiya) — eng ulashiladigan format
+# Amaliy qo'llanma postlari uchun mavzular (rotatsiya) — eng ulashiladigan format.
+# Ro'yxat 12 ta edi, amaliy post esa haftada 2 marta chiqadi — katalog 6 haftada
+# tugab, "CV yozish" kabi mavzular oyiga qayta chiqardi. Bundan tashqari mavzular
+# bir gala edi ("ChatGPT bilan MATN yozish"), shuning uchun turli mavzular ham
+# bir xil o'qilardi. Ro'yxat kengaytirildi va matn yozishdan tashqari sohalar
+# (tahlil, o'rganish, tartib, media, xavfsizlik) qo'shildi.
 PRACTICAL_TOPICS = [
     "ChatGPT bilan professional CV yozish",
     "AI yordamida ish e'lonlariga cover letter tayyorlash",
@@ -156,7 +187,66 @@ PRACTICAL_TOPICS = [
     "AI yordamida o'quv reja (study plan) tuzish",
     "Prompt yozishning amaliy formulasi",
     "AI bilan ijtimoiy tarmoq postlarini yozish",
+    "ChatGPT bilan ish intervyusiga tayyorgarlik ko'rish",
+    "AI javoblarini fakt-tekshiruvdan o'tkazish",
+    "ChatGPT'ni o'zingizga sozlash (Custom Instructions)",
+    "AI bilan kitob va uzun maqolani konspekt qilish",
+    "AI yordamida rasm generatsiya qilish — prompt asoslari",
+    "Ovozli xabar va uchrashuvni AI bilan matnga aylantirish",
+    "AI bilan kun tartibi va haftalik reja tuzish",
+    "AI yordamida kod yozishni noldan boshlash",
+    "AI bilan ma'lumotlarni jadvalga solib tahlil qilish",
+    "AI bilan sayohat va byudjet rejasini tuzish",
+    "AI chatiga kontekst berish san'ati — javob sifatini oshirish",
+    "AI'ga shaxsiy ma'lumot bermaslik — xavfsizlik qoidalari",
 ]
+
+# ─── amaliy post janrlari ──────────────────────────────────────────────────────
+# Ta'limiy postlarda janr rotatsiyasi bor edi, amaliyda esa yo'q — shuning uchun
+# har seshanba va juma posti bir xil skelet bilan chiqardi ("sarlavha → kirish →
+# 3-5 qadam → pro-maslahat"). Janr mavzudan mustaqil aylanadi.
+PRACTICAL_FORMATS: dict[str, str] = {
+    "qadam": (
+        "JANR — QADAMMA-QADAM: o'quvchi ketma-ket bajaradigan yo'riqnoma.\n"
+        "- Kirish 1-2 gap: bu nima uchun kerak, qanday muammoni yechadi\n"
+        "- 3-5 ta RAQAMLANGAN qadam, har birida aniq amal\n"
+        "- Kerak joyda aynan yoziladigan prompt namunasini _kursiv_ da ber\n"
+        "- Yakunda kichik pro-maslahat yoki ogohlantirish"
+    ),
+    "prompt": (
+        "JANR — TAYYOR PROMPT: postning markazida ko'chirib ishlatiladigan "
+        "bitta prompt shabloni tursin.\n"
+        "- Boshida: bu prompt qanday natija beradi\n"
+        "- To'liq prompt shabloni — o'quvchi to'ldiradigan joylari [kvadrat "
+        "qavs] bilan belgilangan holda\n"
+        "- Shablonning har bo'lagi nega kerakligini 3 punktda tushuntir\n"
+        "- 1 ta o'zgartirish bilan uni boshqa vazifaga moslash yo'li"
+    ),
+    "oldin_keyin": (
+        "JANR — YOMON PROMPT / YAXSHI PROMPT: farqni yonma-yon ko'rsat.\n"
+        "- Odatda yoziladigan zaif so'rov namunasi va u qanday javob berishi\n"
+        "- O'sha so'rovning kuchaytirilgan varianti — nima qo'shilgani "
+        "aniq ko'rinsin\n"
+        "- Nima o'zgargani va nega ishlagani 3 punktda\n"
+        "- O'quvchi shu qoidani o'z vazifasiga qanday ko'chirishi"
+    ),
+    "xato": (
+        "JANR — XATOLAR USTIDA: shu ishni qilayotganda ko'pchilik nimani "
+        "noto'g'ri qiladi.\n"
+        "- Boshida: shu vazifada eng ko'p uchraydigan muammo\n"
+        "- 3 ta aniq xato — har birida: xato nima, nega natijani buzadi, "
+        "o'rniga NIMA qilish kerak\n"
+        "- Yakunda: shu 3 tasidan qutulgan odam qanday natija oladi"
+    ),
+    "checklist": (
+        "JANR — TEKSHIRUV RO'YXATI: o'quvchi ish oldidan yoki ishdan keyin "
+        "yurib chiqadigan ro'yxat.\n"
+        "- Boshida 1-2 gap: bu ro'yxat qaysi paytda ishlatiladi\n"
+        "- 5-7 ta qisqa, ✅ bilan belgilangan tekshiruv nuqtasi — har biri "
+        "«ha/yo'q» deb javob beriladigan darajada aniq\n"
+        "- Yakunda: ro'yxatdan qaysi biri eng ko'p o'tkazib yuborilishi"
+    ),
+}
 
 # AI vosita sharhlari uchun ro'yxat (rotatsiya)
 AI_TOOLS = [
@@ -348,16 +438,36 @@ Postlar:
         """
         if not pub_date:
             return False
+        from datetime import datetime, timezone, timedelta
+        dt = NewsFetcher._parse_feed_date(pub_date)
+        if dt is None:
+            logger.warning(f"Sana o'qilmadi, item o'tkazib yuborildi: {pub_date[:40]!r}")
+            return False
+        return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    @staticmethod
+    def _parse_feed_date(raw: str):
+        """Feed sanasini o'qiydi: RSS (RFC 822) ham, Atom (ISO 8601) ham.
+
+        Atom feedlar `2026-09-01T09:00:00Z` beradi — `parsedate_to_datetime`
+        buni o'qiy olmaydi, shuning uchun ikkinchi urinish ISO bilan bo'ladi.
+        """
+        from datetime import datetime, timezone
+        raw = (raw or "").strip()
+        if not raw:
+            return None
+        dt = None
         try:
             from email.utils import parsedate_to_datetime
-            from datetime import datetime, timezone, timedelta
-            dt = parsedate_to_datetime(pub_date)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
+            dt = parsedate_to_datetime(raw)
         except Exception:
-            logger.warning(f"pubDate o'qilmadi, item o'tkazib yuborildi: {pub_date[:40]!r}")
-            return False
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except Exception:
+                return None
+        if dt is None:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
     async def fetch_rss(self, url: str, limit: int = 5) -> list[dict]:
         """RSS feeddan yangiliklar oladi (faqat so'nggi NEWS_FRESHNESS_HOURS ichidagilar)."""
@@ -369,30 +479,55 @@ Postlar:
             logger.warning(f"RSS fetch xatosi ({url}): {e}")
             return []
 
-        items = []
+        import re
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.removeprefix("www.").removeprefix("feeds.")
+
+        items: list[dict] = []
         try:
             root = ET.fromstring(resp.text)
-            channel = root.find("channel")
-            if channel is None:
-                return []
-            for item in channel.findall("item"):
+            for title, link, desc, pub in self._feed_entries(root):
                 if len(items) >= limit:
                     break
-                title = item.findtext("title", "").strip()
-                link = item.findtext("link", "").strip()
-                desc = item.findtext("description", "").strip()
-                pub = item.findtext("pubDate", "").strip()
-                # HTML teglarini tozalash
-                import re
                 desc = re.sub(r"<[^>]+>", "", desc)[:300]
                 if title and self._is_fresh(pub):
-                    from urllib.parse import urlparse
-                    domain = urlparse(url).netloc.removeprefix("www.").removeprefix("feeds.")
                     items.append({"title": title, "link": link, "desc": desc, "source": domain})
         except Exception as e:
-            logger.warning(f"RSS parse xatosi: {e}")
+            logger.warning(f"RSS parse xatosi ({domain}): {e}")
 
         return items
+
+    @staticmethod
+    def _feed_entries(root) -> list[tuple[str, str, str, str]]:
+        """Feed elementlarini `(title, link, desc, date)` ko'rinishida beradi.
+
+        Ikki format qo'llab-quvvatlanadi. Ilgari faqat RSS (`<channel><item>`)
+        o'qilardi — Atom feed (`<feed><entry>`) `channel` topilmagani uchun
+        JIMGINA bo'sh ro'yxat qaytarardi, ya'ni manba ulangandek ko'rinib,
+        aslida hech narsa bermasdi.
+        """
+        ns = "{http://www.w3.org/2005/Atom}"
+        channel = root.find("channel")
+        if channel is not None:                       # RSS 2.0
+            return [
+                (
+                    (i.findtext("title") or "").strip(),
+                    (i.findtext("link") or "").strip(),
+                    (i.findtext("description") or "").strip(),
+                    (i.findtext("pubDate") or "").strip(),
+                )
+                for i in channel.findall("item")
+            ]
+
+        entries = root.findall(f"{ns}entry")          # Atom
+        out: list[tuple[str, str, str, str]] = []
+        for e in entries:
+            link_el = e.find(f"{ns}link")
+            link = (link_el.get("href") if link_el is not None else "") or ""
+            desc = (e.findtext(f"{ns}summary") or e.findtext(f"{ns}content") or "").strip()
+            pub = (e.findtext(f"{ns}published") or e.findtext(f"{ns}updated") or "").strip()
+            out.append(((e.findtext(f"{ns}title") or "").strip(), link, desc, pub))
+        return out
 
     async def fetch_telegram_news(
         self, hours: int = NEWS_FRESHNESS_HOURS, per_channel: int = 20
@@ -422,12 +557,73 @@ Postlar:
         logger.debug(f"TG yangiliklari: {len(items)} ta ({len(NEWS_TG_CHANNELS)} kanaldan)")
         return items
 
+    async def check_sources(self) -> dict:
+        """Har bir manbani jonli tekshiradi: nechta va qanchalik yangi xabar beradi.
+
+        Manba o'lganda tizim jimgina ishlashda davom etardi — feed 404 qaytarsa
+        ham, Atom formatiga o'tsa ham natija shunchaki bo'sh ro'yxat edi.
+        Bu tekshiruv nima ishlayotganini ko'rsatadi.
+
+        Returns: `{"feeds": [...], "channels": [...]}` — har biri
+        `{"name", "ok", "fresh", "note"}`.
+        """
+        import asyncio
+        sem = asyncio.Semaphore(FEED_CONCURRENCY)
+
+        async def probe(url: str) -> dict:
+            from urllib.parse import urlparse
+            name = urlparse(url).netloc.removeprefix("www.").removeprefix("feeds.")
+            try:
+                async with sem:
+                    items = await self.fetch_rss(url, limit=50)
+            except Exception as e:
+                return {"name": name, "ok": False, "fresh": 0, "note": str(e)[:60]}
+            # Bo'sh natija ikki xil bo'ladi: manba jim (normal) yoki buzilgan.
+            # Farqini ajratish uchun xom javobni ham ko'ramiz.
+            return {
+                "name": name, "ok": True, "fresh": len(items),
+                "note": "" if items else f"{NEWS_FRESHNESS_HOURS} soatda yangilik yo'q",
+            }
+
+        feeds = list(await asyncio.gather(*(probe(u) for u in AI_NEWS_FEEDS)))
+
+        channels: list[dict] = []
+        from app.services.telegram_service import telegram_service
+        for ch in NEWS_TG_CHANNELS:
+            try:
+                msgs = await telegram_service._client.get_messages(ch, limit=5)
+                channels.append({
+                    "name": ch, "ok": True, "fresh": len([m for m in msgs if m]),
+                    "note": "",
+                })
+            except Exception as e:
+                channels.append({"name": ch, "ok": False, "fresh": 0, "note": str(e)[:60]})
+
+        dead = [f["name"] for f in feeds + channels if not f["ok"]]
+        if dead:
+            logger.warning(f"Ishlamayotgan manbalar: {', '.join(dead)}")
+        return {"feeds": feeds, "channels": channels}
+
     async def get_ai_news(self, count: int = 3) -> list[dict]:
         """RSS saytlar + Telegram kanallardan yangilik yig'ib, dedup qilib qaytaradi."""
+        import asyncio
+        sem = asyncio.Semaphore(FEED_CONCURRENCY)
+
+        async def one(url: str) -> list[dict]:
+            async with sem:
+                return await self.fetch_rss(url, limit=6)
+
+        # Feedlar parallel yuklanadi — sekin manba boshqalarni kutkazmaydi.
+        # return_exceptions: bitta feed yiqilsa qolganlari baribir keladi.
+        results = await asyncio.gather(
+            *(one(u) for u in AI_NEWS_FEEDS), return_exceptions=True
+        )
         all_items: list[dict] = []
-        for feed_url in AI_NEWS_FEEDS:
-            items = await self.fetch_rss(feed_url, limit=6)
-            all_items.extend(items)
+        for url, res in zip(AI_NEWS_FEEDS, results):
+            if isinstance(res, BaseException):
+                logger.warning(f"Feed o'qilmadi ({url}): {res}")
+                continue
+            all_items.extend(res)
 
         try:
             all_items.extend(await self.fetch_telegram_news())
@@ -800,27 +996,38 @@ Oxiridagi "—" va kanal link qatorlarini OLIB TASHLASH kerak — ular keyinchal
             max_tokens=800,
         )
 
-    async def generate_practical_post(self, topic: str, style: str = DEFAULT_STYLE) -> str:
-        """Amaliy qo'llanma posti — o'quvchi darhol qo'llay oladigan qadamlar."""
+    async def generate_practical_post(
+        self, topic: str, style: str = DEFAULT_STYLE, fmt: str | None = None
+    ) -> str:
+        """Amaliy qo'llanma posti — o'quvchi darhol qo'llay oladigan qadamlar.
+
+        `fmt` — `PRACTICAL_FORMATS` kaliti (janr). Berilmasa bugungi
+        rotatsiyadan olinadi, shunda ketma-ket amaliy postlar bir xil
+        skelet bilan chiqmaydi.
+        """
         style_text = await self._style_text(style)
-        prompt = f"""Sen AI vositalaridan kundalik ishda foydalanadigan amaliyotchi mutaxassissan. Telegram kanalga quyidagi mavzuda AMALIY QO'LLANMA posti yoz — o'quvchi o'qib bo'lgach darhol o'zi qilib ko'ra olsin.
+        fmt = fmt if fmt in PRACTICAL_FORMATS else self.get_todays_practical_format()
+        format_text = PRACTICAL_FORMATS[fmt]
+        prompt = f"""Sen AI vositalaridan kundalik ishda foydalanadigan amaliyotchi mutaxassissan. Telegram kanalga quyidagi mavzuda AMALIY post yoz — o'quvchi o'qib bo'lgach darhol o'zi qilib ko'ra olsin.
 
 Mavzu: {topic}
 
+{format_text}
+
 {style_text}
 
-Tuzilish:
-- Sarlavha: emoji + **qalin** — natijani va'da qilsin ("... 5 daqiqada", "... 3 qadamda").
-- Kirish 1-2 gap: bu nima uchun kerak, qanday muammoni yechadi.
-- 3-5 ta RAQAMLANGAN qadam. Har qadamda ANIQ amal — kerak bo'lsa aynan yozadigan prompt namunasini _kursiv_ da ber.
-- Yakun: kichik pro-maslahat yoki ogohlantirish + "sinab ko'ring va natijani yozing" CTA.
+Umumiy tuzilish:
+- Sarlavha: emoji + **qalin**, aniq natijani va'da qilsin. Janrga mos bo'lsin va oldingi postlarni eslatmasin.
+- Yuqoridagi janr tuzilishiga amal qil, lekin bo'lim sarlavhalarini so'zma-so'z yozma — matn tabiiy oqsin.
+- Yakunda o'quvchini harakatga undaydigan tabiiy CTA.
 
-Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — faqat qilinadigan ishlar.
+Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — o'quvchi takrorlay oladigan ANIQ QADAMLAR va amallar bo'lsin.
 {_QUOTE_RULE}
-Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
+Oxiriga MAVZUGA mos 3-4 hashtag (har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7, max_tokens=800,
+            temperature=0.8,  # janr xilma-xilligi uchun biroz yuqori
+            max_tokens=800,
         )
 
     async def generate_tool_review_post(self, tool: str, style: str = DEFAULT_STYLE) -> str:
@@ -889,19 +1096,40 @@ Qoralama post:
             logger.warning(f"Critique xatosi — original qoldirildi: {e}")
             return text
 
-    def get_todays_practical_topic(self) -> str:
-        from datetime import date
-        return PRACTICAL_TOPICS[date.today().toordinal() % len(PRACTICAL_TOPICS)]
+    @staticmethod
+    def _pick_fresh(items: list[str], recent: list[str] | None = None) -> str:
+        """Rotatsiyadan yaqinda chiqmagan birinchi mavzuni tanlaydi.
 
-    def get_todays_tool(self) -> str:
-        from datetime import date
-        return AI_TOOLS[date.today().toordinal() % len(AI_TOOLS)]
+        Sana bo'yicha `ordinal % len(items)` rotatsiyasi o'zicha yetarli emas
+        edi: kanalda haftada 2-5 post chiqadi, shuning uchun katalog bir necha
+        haftada tugab, mavzular tarix bilan solishtirilmasdan qaytadan
+        boshlanardi (o'quvchiga "bir xil postlar" shu yerdan ko'rinardi).
 
-    def get_todays_topic(self) -> str:
-        """Bugungi sanaga qarab ta'limiy mavzu tanlaydi (rotatsiya)."""
+        `recent` — o'sha turdagi oxirgi postlar mavzusi, ENG YANGISI BIRINCHI.
+        Rotatsiya tartibi saqlanadi, faqat yaqinda chiqqanlari o'tkazib
+        yuboriladi. Hammasi chiqib bo'lgan bo'lsa — eng uzoq vaqt oldin
+        chiqqani olinadi. `recent` bo'sh bo'lsa eski xatti-harakat qoladi.
+        """
         from datetime import date
-        day_index = date.today().toordinal() % len(EDUCATIONAL_TOPICS)
-        return EDUCATIONAL_TOPICS[day_index]
+        start = date.today().toordinal() % len(items)
+        order = [items[(start + i) % len(items)] for i in range(len(items))]
+        if not recent:
+            return order[0]
+        used = {t for t in recent if t}
+        for topic in order:
+            if topic not in used:
+                return topic
+        return max(order, key=lambda t: recent.index(t) if t in recent else len(recent))
+
+    def get_todays_practical_topic(self, recent: list[str] | None = None) -> str:
+        return self._pick_fresh(PRACTICAL_TOPICS, recent)
+
+    def get_todays_tool(self, recent: list[str] | None = None) -> str:
+        return self._pick_fresh(AI_TOOLS, recent)
+
+    def get_todays_topic(self, recent: list[str] | None = None) -> str:
+        """Bugungi sanaga qarab ta'limiy mavzu tanlaydi (rotatsiya + tarix)."""
+        return self._pick_fresh(EDUCATIONAL_TOPICS, recent)
 
     def get_todays_educational_format(self) -> str:
         """Bugungi ta'limiy post janrini tanlaydi (mavzudan mustaqil rotatsiya)."""
@@ -909,11 +1137,11 @@ Qoralama post:
         keys = list(EDUCATIONAL_FORMATS)
         return keys[date.today().toordinal() % len(keys)]
 
-    def get_different_topic(self, exclude: str) -> str:
-        """Berilgan mavzudan farqli, tasodifiy mavzu qaytaradi."""
-        import random
-        candidates = [t for t in EDUCATIONAL_TOPICS if t != exclude]
-        return random.choice(candidates)
+    def get_todays_practical_format(self) -> str:
+        """Bugungi amaliy post janrini tanlaydi (mavzudan mustaqil rotatsiya)."""
+        from datetime import date
+        keys = list(PRACTICAL_FORMATS)
+        return keys[date.today().toordinal() % len(keys)]
 
     async def get_ai_news_shuffled(self, count: int = 3) -> list[dict]:
         """Yangiliklar ro'yxatini tasodifiy tartibda qaytaradi (boshqa post uchun).

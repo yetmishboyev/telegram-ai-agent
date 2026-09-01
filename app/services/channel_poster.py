@@ -217,22 +217,22 @@ class ChannelPoster:
         from app.services.news_fetcher import DEFAULT_STYLE
         style = data.get("style") or DEFAULT_STYLE
 
+        # Rad etilgan mavzu ham "yaqinda chiqqan" deb hisoblanadi — shunda
+        # yangi tanlov ham eski mavzudan, ham kanal tarixidan qochadi.
         if post_type == "educational":
-            # Eski mavzudan farqli yangi mavzu tanlaymiz
-            new_topic = news_fetcher.get_different_topic(old_topic)
+            recent = [old_topic] + await self._recent_topics("educational")
+            new_topic = news_fetcher.get_todays_topic(recent)
             logger.info(f"Boshqa ta'limiy post: '{old_topic}' → '{new_topic}'")
             new_text = await news_fetcher.generate_educational_post(new_topic, style)
             await self._send_for_approval(new_text, "educational", new_topic, style)
         elif post_type == "practical":
-            import random
-            from app.services.news_fetcher import PRACTICAL_TOPICS
-            new_topic = random.choice([t for t in PRACTICAL_TOPICS if t != old_topic])
+            recent = [old_topic] + await self._recent_topics("practical")
+            new_topic = news_fetcher.get_todays_practical_topic(recent)
             new_text = await news_fetcher.generate_practical_post(new_topic, style)
             await self._send_for_approval(new_text, "practical", new_topic, style)
         elif post_type == "tool":
-            import random
-            from app.services.news_fetcher import AI_TOOLS
-            new_tool = random.choice([t for t in AI_TOOLS if t != old_topic])
+            recent = [old_topic] + await self._recent_topics("tool")
+            new_tool = news_fetcher.get_todays_tool(recent)
             new_text = await news_fetcher.generate_tool_review_post(new_tool, style)
             await self._send_for_approval(new_text, "tool", new_tool, style)
         elif post_type == "free":
@@ -350,12 +350,14 @@ class ChannelPoster:
             return
         try:
             if fmt == "practical":
-                topic = news_fetcher.get_todays_practical_topic()
+                topic = news_fetcher.get_todays_practical_topic(
+                    await self._recent_topics("practical")
+                )
                 logger.info(f"Taqvim: amaliy post — {topic}")
                 text = await news_fetcher.generate_practical_post(topic, DEFAULT_STYLE)
                 await self._send_for_approval(text, "practical", topic, DEFAULT_STYLE)
             elif fmt == "tool":
-                tool = news_fetcher.get_todays_tool()
+                tool = news_fetcher.get_todays_tool(await self._recent_topics("tool"))
                 logger.info(f"Taqvim: vosita sharhi — {tool}")
                 text = await news_fetcher.generate_tool_review_post(tool, DEFAULT_STYLE)
                 await self._send_for_approval(text, "tool", tool, DEFAULT_STYLE)
@@ -456,7 +458,7 @@ class ChannelPoster:
         """09:00 — AI ta'limiy post (egaga tasdiqlashga yuboriladi)."""
         try:
             from app.services.news_fetcher import news_fetcher, DEFAULT_STYLE
-            topic = news_fetcher.get_todays_topic()
+            topic = news_fetcher.get_todays_topic(await self._recent_topics("educational"))
             logger.info(f"Ta'limiy post tayyorlanmoqda: {topic}")
             text = await news_fetcher.generate_educational_post(topic, DEFAULT_STYLE)
             await self._send_for_approval(text, "educational", topic, DEFAULT_STYLE)
@@ -506,6 +508,30 @@ class ChannelPoster:
             logger.warning(f"Yangilik tarixini o'qishda xato — tarixsiz davom etadi: {e}")
             return []
 
+    async def _recent_topics(self, post_type: str, limit: int = 40) -> list[str]:
+        """Shu turdagi oxirgi postlar mavzusi (eng yangisi birinchi).
+
+        Mavzu tanlash faqat sanaga bog'langan edi; kanal haftada bir necha post
+        chiqargani uchun katalog tez tugab, mavzular qayta boshlanardi. Shu
+        tarix `_pick_fresh` ga berilganda yaqinda chiqqan mavzu qayta tanlanmaydi.
+        """
+        try:
+            from sqlalchemy import select, desc
+            from app.database.session import AsyncSessionLocal
+            from app.database.models import ChannelPost
+
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(ChannelPost.topic)
+                    .where(ChannelPost.post_type == post_type)
+                    .order_by(desc(ChannelPost.sent_at))
+                    .limit(limit)
+                )
+                return [t for t in result.scalars().all() if t]
+        except Exception as e:
+            logger.warning(f"'{post_type}' tarixini o'qishda xato — tarixsiz davom etadi: {e}")
+            return []
+
     async def _build_deep_news(
         self, style: str, shuffled: bool = False
     ) -> tuple[str | None, str, str]:
@@ -538,7 +564,9 @@ class ChannelPoster:
             from app.services.news_fetcher import news_fetcher
             category = ""
             if post_type == "educational":
-                topic = topic or news_fetcher.get_todays_topic()
+                topic = topic or news_fetcher.get_todays_topic(
+                    await self._recent_topics("educational")
+                )
                 text = await news_fetcher.generate_educational_post(topic, style)
             elif post_type == "news":
                 text, topic, category = await self._build_deep_news(style)
@@ -546,10 +574,14 @@ class ChannelPoster:
                     await self._notify_owner_text("❌ Hozircha yangilik topilmadi — keyinroq urinib ko'ring.")
                     return
             elif post_type == "practical":
-                topic = topic or news_fetcher.get_todays_practical_topic()
+                topic = topic or news_fetcher.get_todays_practical_topic(
+                    await self._recent_topics("practical")
+                )
                 text = await news_fetcher.generate_practical_post(topic, style)
             elif post_type == "tool":
-                topic = topic or news_fetcher.get_todays_tool()
+                topic = topic or news_fetcher.get_todays_tool(
+                    await self._recent_topics("tool")
+                )
                 text = await news_fetcher.generate_tool_review_post(topic, style)
             else:  # free — ega bergan mavzu
                 text = await news_fetcher.generate_free_post(topic, style)

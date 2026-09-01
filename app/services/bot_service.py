@@ -39,6 +39,7 @@ NEWPOST_TYPE_BUTTONS = [
     [Button.inline("❓ Quiz", b"newpost:type:quiz"),
      Button.inline("📊 So'rovnoma", b"newpost:type:poll")],
     [Button.inline("🎯 Uslub o'rgatish", b"newpost:learnstyle")],
+    [Button.inline("📡 Manbalar holati", b"newpost:sources")],
     [Button.inline("🔙 Menyu", b"menu")],
 ]
 
@@ -109,6 +110,40 @@ class BotService:
             await r.delete(key)
         else:
             await r.setex(key, 600, json.dumps(state))
+
+    async def _show_news_sources(self, event) -> None:
+        """Yangilik manbalarining jonli holatini ko'rsatadi.
+
+        Manba o'lganda (404, nom o'zgarishi, format almashishi) tizim jimgina
+        ishlab ketaverardi — bu ekran nimadan yangilik kelayotganini ko'rsatadi.
+        """
+        from app.services.news_fetcher import news_fetcher, NEWS_FRESHNESS_HOURS
+        try:
+            report = await news_fetcher.check_sources()
+        except Exception as e:
+            await event.edit(f"❌ Manbalarni tekshirib bo'lmadi: {e}",
+                             buttons=[[Button.inline("🔙 Orqaga", b"newpost:menu")]])
+            return
+
+        def block(title: str, rows: list[dict]) -> str:
+            lines = [f"<b>{title}</b>"]
+            for r in rows:
+                icon = "🟢" if r["ok"] and r["fresh"] else ("🟡" if r["ok"] else "🔴")
+                tail = f" — {r['fresh']} ta" if r["ok"] and r["fresh"] else \
+                       (f" — {r['note']}" if r["note"] else "")
+                lines.append(f"{icon} {r['name']}{tail}")
+            return "\n".join(lines)
+
+        feeds, channels = report["feeds"], report["channels"]
+        live = sum(1 for r in feeds + channels if r["ok"] and r["fresh"])
+        text = (
+            f"📡 <b>Yangilik manbalari</b> — so'nggi {NEWS_FRESHNESS_HOURS} soat\n"
+            f"Jonli: {live} / {len(feeds) + len(channels)}\n\n"
+            + block("🌐 Saytlar", feeds) + "\n\n" + block("💬 Telegram kanallar", channels)
+            + "\n\n🟢 yangilik bor · 🟡 ulanadi, lekin jim · 🔴 ishlamayapti"
+        )
+        await event.edit(text[:4000], parse_mode="html",
+                         buttons=[[Button.inline("🔙 Orqaga", b"newpost:menu")]])
 
     # ─── message handler ──────────────────────────────────────────────────────
 
@@ -337,6 +372,10 @@ class BotService:
 
         elif data == "newpost:menu":
             await event.edit("📢 Qanday post yaratamiz?", buttons=NEWPOST_TYPE_BUTTONS)
+
+        elif data == "newpost:sources":
+            await event.edit("📡 Manbalar tekshirilmoqda...")
+            await self._show_news_sources(event)
 
         elif data == "newpost:learnstyle":
             await self._set_state({"step": "learn_style"})
