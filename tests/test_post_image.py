@@ -224,3 +224,51 @@ async def test_card_route_404_when_expired():
         with pytest.raises(HTTPException) as err:
             await get_post_card("deadbeef")
     assert err.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_send_with_card_prewarms_the_preview_before_sending():
+    """Telegram karta manzilini oldin yuklab olishi shart.
+
+    `InputMediaWebPage` allaqachon o'qilgan sahifani talab qiladi; karta
+    manzili har postda yangi bo'lgani uchun busiz `WEBPAGE_NOT_FOUND`
+    qaytardi va rasm matn ostiga tushib qolardi.
+    """
+    from telethon.tl.functions.messages import (
+        GetWebPagePreviewRequest, SendMediaRequest,
+    )
+    calls = []
+
+    async def rpc(request):
+        calls.append(type(request))
+        if isinstance(request, SendMediaRequest):
+            update = type("UpdateMessageID", (), {"id": 31})()
+            return type("Updates", (), {"updates": [update]})()
+        return object()
+
+    client = AsyncMock(side_effect=rpc)
+    client._parse_message_text.return_value = ("matn", [])
+    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})):
+        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 31
+
+    assert calls.index(GetWebPagePreviewRequest) < calls.index(SendMediaRequest), \
+        "ko'rib chiqish yuborishdan OLDIN so'ralishi kerak"
+
+
+@pytest.mark.asyncio
+async def test_send_with_card_survives_a_failing_prewarm():
+    """Oldindan yuklatish yiqilsa ham yuborish davom etsin."""
+    from telethon.tl.functions.messages import (
+        GetWebPagePreviewRequest, SendMediaRequest,
+    )
+
+    async def rpc(request):
+        if isinstance(request, GetWebPagePreviewRequest):
+            raise RuntimeError("preview xatosi")
+        update = type("UpdateMessageID", (), {"id": 33})()
+        return type("Updates", (), {"updates": [update]})()
+
+    client = AsyncMock(side_effect=rpc)
+    client._parse_message_text.return_value = ("matn", [])
+    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})):
+        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 33

@@ -126,6 +126,13 @@ class ChannelPoster:
         ko'rsatadi. Telethon'ning yuqori darajali `send_message` metodi bu
         ikkovini ochib bermaydi, shuning uchun so'rov qo'lda yig'iladi.
 
+        MUHIM — avval ko'rib chiqish so'raladi: `InputMediaWebPage` Telegram
+        ALLAQACHON o'qigan sahifani talab qiladi. Karta manzili har postda
+        yangi bo'lgani uchun birinchi urinish `WEBPAGE_NOT_FOUND` bilan
+        yiqilardi va post rasm matn OSTIDA turgan holda chiqardi.
+        `GetWebPagePreview` Telegramni manzilni o'sha zahoti yuklab olishga
+        majbur qiladi, shundan keyingina u media sifatida biriktiriladi.
+
         Xato bo'lsa oddiy havola ko'rinishiga, u ham bo'lmasa toza matnga
         qaytamiz — rasm hech qachon postni to'sib qo'ymasligi kerak.
         """
@@ -136,8 +143,16 @@ class ChannelPoster:
         marked = f'<a href="{card_url}">\u200b</a>{text}'
         try:
             from telethon import helpers
-            from telethon.tl.functions.messages import SendMediaRequest
+            from telethon.tl.functions.messages import (
+                GetWebPagePreviewRequest, SendMediaRequest,
+            )
             from telethon.tl.types import InputMediaWebPage
+
+            # Telegram kartani yuklab olsin — busiz keyingi qadam yiqiladi
+            try:
+                await client(GetWebPagePreviewRequest(message=card_url))
+            except Exception as e:
+                logger.debug(f"Ko'rib chiqish oldindan so'ralmadi: {e}")
 
             entity = await client.get_input_entity(CHANNEL)
             message, entities = await client._parse_message_text(marked, "html")
