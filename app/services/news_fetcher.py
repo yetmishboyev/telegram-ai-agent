@@ -309,6 +309,21 @@ POST_STYLES: dict[str, dict] = {
 DEFAULT_STYLE = "jonli"
 
 
+# ─── hajm chegarasi ───────────────────────────────────────────────────────────
+# Post endi RASM IZOHI sifatida ketadi (rasm + matn bitta xabarda), Telegram
+# esa izohni 1024 belgiga cheklaydi. Manba havolasi, hashtaglar va kanal
+# footeri ham shu chegara ichida, shuning uchun matnning o'ziga ~820 belgi
+# qoladi — o'zbekchada taxminan 110 so'z. Chegaradan oshsa post rasmsiz
+# chiqadi, ya'ni uzunlik sifat emas, YO'QOTISH.
+_LENGTH_RULE = (
+    "\n\nHAJM — QAT'IY:\n"
+    "- Butun post 100-115 so'z, hashtaglar bilan birga JAMI 820 BELGIDAN "
+    "OSHMASIN. Bu Telegram cheklovi, tavsiya emas.\n"
+    "- Qisqalik mazmunni kesish emas: bitta aniq fikrni to'liq ayt, "
+    "qolganini tashla. Kirish so'zlari, takror va umumiy gaplarni yozma.\n"
+    "- Har gap yangi ma'lumot bersin — bo'sh gap uchun joy yo'q."
+)
+
 _LATIN_RULE = (
     " MUHIM: butun matnni FAQAT o'zbek LOTIN alifbosida yoz — biror so'zga ham "
     "krill harflarini (а, б, в, г, д...) aralashtirma."
@@ -715,10 +730,9 @@ Talablar:
 - So'zlarni to'g'ri qo'lla: "sun'iy intellekt" (suniy emas), "dastur" (dasturiy ta'minot), "foydalanuvchi" va hokazo.
 - Emojilarni faqat sarlavhalarda emas, matn ichida ham joyida va tabiiy ishlat (haddan tashqari ko'p bo'lmasin — mazmunni jonlantirish uchun).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
-- Hajmi: 220–280 so'z.
 - Emoji + **qalin sarlavha** qatori bilan boshla. Sarlavha janrga mos bo'lsin va oldingi postlarni eslatmasin — "🎓" ni har safar takrorlashga majbur emassan.
 - Yuqoridagi janr tuzilishiga amal qil, lekin bo'lim sarlavhalarini so'zma-so'z yozma — matn tabiiy oqsin.
-{_QUOTE_RULE}{_UZBEK_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}{_LENGTH_RULE}
 - Oxiriga MAVZUGA mos 3-4 ta hashtag yoz (aynan shu mavzudan kelib chiqib — har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma.
 """
         return await self._call_llm(
@@ -878,9 +892,9 @@ Post tuzilishi (sarlavhalarni yozma, tabiiy oqim bo'lsin):
 
 Qoidalar:
 - BITTA yangilik, chuqur — boshqa yangiliklar haqida yozma.
-- 180-260 so'z. Telegram Markdown (**qalin**, _kursiv_). Emoji tabiiy, me'yorida.
+- Telegram Markdown (**qalin**, _kursiv_). Emoji tabiiy, me'yorida.
 - Sarlavha qatori bilan boshla: emoji + **qalin sarlavha** (o'zbekcha, jozibali).
-{_QUOTE_RULE}{_UZBEK_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}{_LENGTH_RULE}
 - Oxiriga 3-4 ta hashtag. Kanal linkini QO'SHMA.
 """
         return await self._call_llm(
@@ -994,8 +1008,7 @@ Talablar:
 - To'g'ri adabiy o'zbek tilida, grammatikaga e'tibor berib yoz.
 - Emojilarni matn ichida tabiiy ishlat (haddan oshirmasdan).
 - Telegram Markdown formatida yoz (**qalin**, _kursiv_).
-- Hajmi mavzuga mos bo'lsin: 150-280 so'z.
-{_QUOTE_RULE}{_UZBEK_RULE}
+{_QUOTE_RULE}{_UZBEK_RULE}{_LENGTH_RULE}
 - Oxiriga kanal linkini QO'SHMA — u avtomatik qo'shiladi.
 """
         return await self._call_llm(
@@ -1057,8 +1070,8 @@ Umumiy tuzilish:
 - Yuqoridagi janr tuzilishiga amal qil, lekin bo'lim sarlavhalarini so'zma-so'z yozma — matn tabiiy oqsin.
 - Yakunda o'quvchini harakatga undaydigan tabiiy CTA.
 
-Qoidalar: 170-240 so'z, Telegram Markdown, umumiy nazariya YO'Q — o'quvchi takrorlay oladigan ANIQ QADAMLAR va amallar bo'lsin.
-{_QUOTE_RULE}{_UZBEK_RULE}
+Qoidalar: Telegram Markdown, umumiy nazariya YO'Q — o'quvchi takrorlay oladigan ANIQ QADAMLAR va amallar bo'lsin.
+{_QUOTE_RULE}{_UZBEK_RULE}{_LENGTH_RULE}
 Oxiriga MAVZUGA mos 3-4 hashtag (har postda bir xil to'plamni takrorlama). Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
@@ -1083,8 +1096,8 @@ Tuzilish:
 - Kimga mos: 1 gap. Narxi: bepul/pullik holati (aniq bilmasang "bepul rejasi bor" kabi ehtiyotkor yoz, narx to'qima).
 - Yakun: o'z bahong (masalan "10 dan 8") + "siz ishlatib ko'rganmisiz?" CTA.
 
-Qoidalar: 160-220 so'z, Telegram Markdown. Faktlarni to'qima.
-{_QUOTE_RULE}{_UZBEK_RULE}
+Qoidalar: Telegram Markdown. Faktlarni to'qima.
+{_QUOTE_RULE}{_UZBEK_RULE}{_LENGTH_RULE}
 Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
         return await self._call_llm(
             messages=[{"role": "user", "content": prompt}],
@@ -1110,7 +1123,7 @@ Oxiriga 3-4 hashtag. Kanal linkini qo'shma."""
 Qat'iy qoidalar:
 - Postning mazmuni, faktlari va uslubini (ohangini) SAQLA — sen tahrirchisan, qayta muallif emas.
 - Yangi fakt, raqam yoki va'da QO'SHMA.
-- Uzunlikni sezilarli oshirma (±15% chegarada qol).
+- HAJM: yakuniy post hashtaglar bilan birga 820 BELGIDAN OSHMASIN. Uzun bo'lsa qisqart — bu Telegram rasm izohining cheklovi, oshsa post rasmsiz chiqadi. Uzunlikni hech qachon oshirma.
 - SITATA: `> ` bilan boshlangan qatorlarni SAQLA (kerak bo'lsa ichidagi gapni kuchaytir, lekin `> ` belgisini olib tashlama). Agar qoralamada sitata bo'lmasa, eng muhim BITTA fikrni alohida qatorga chiqarib `> ` bilan belgila.
 - Hashtaglarni saqla. FAQAT o'zbek LOTIN alifbosida.
 - Atamani soddalashtirganda MA'NOSINI buzma — tushunarlilik aniqlik hisobiga bo'lmasin.
@@ -1118,11 +1131,18 @@ Qat'iy qoidalar:
 
 Qoralama post:
 {text}"""
+        # Bo'sh qoralama — muharrirni CHAQIRMAYMIZ. Ilgari u bo'sh matnga
+        # "post matni yuborilmabdi, iltimos yuboring" deb javob yozardi va
+        # o'sha javob post sifatida egaga borardi.
+        if not (text or "").strip():
+            logger.error("Qoralama bo'sh — muharrir chaqirilmadi")
+            return text
+
         try:
             improved = await self._call_llm(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.4,
-                max_tokens=1200,
+                max_tokens=4000,
             )
             improved = improved.strip()
             # Muharrir bo'sh yoki keskin qisqartirilgan natija bersa — originalga qaytamiz

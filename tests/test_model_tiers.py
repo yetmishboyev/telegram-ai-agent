@@ -289,9 +289,14 @@ async def test_generous_budget_is_left_alone():
     create = AsyncMock(return_value=_fake_response())
     with patch.object(agent, "_client") as client, patch("app.ai.usage_log.record"):
         client.messages.create = create
-        await agent._call_llm(messages=[{"role": "user", "content": "x"}], max_tokens=4000)
+        await agent._call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            max_tokens=MIN_OUTPUT_TOKENS_WITH_THINKING + 4000,
+        )
 
-    assert create.call_args.kwargs["max_tokens"] == 4000
+    # Shiftdan yuqori byudjetga tegilmaydi (shift o'zgarsa test ham ergashadi)
+    assert (create.call_args.kwargs["max_tokens"]
+            == MIN_OUTPUT_TOKENS_WITH_THINKING + 4000)
 
 
 @pytest.mark.asyncio

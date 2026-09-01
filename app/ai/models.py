@@ -85,7 +85,14 @@ def sampling_mode(model: str) -> str:
 # qancha o'ylashni O'ZI hal qiladi — bugun yetgan byudjet ertaga yetmasligi mumkin.
 #
 # `max_tokens` bu SHIFT, sarf emas: qisqa javobda ortiqcha token yozilmaydi.
-MIN_OUTPUT_TOKENS_WITH_THINKING = 1024
+# 1024 kam edi. Post generatorlari shu shiftda ishlab, ba'zan MUTLAQO BO'SH
+# javob qaytarardi: model butun byudjetni fikrlashga sarflab, matn yozishga
+# token qolmasdi. Bo'sh qoralama muharrir qatlamiga borib, u yerdan "matn
+# yuborilmabdi" degan javob post o'rniga chiqardi. Shift sarf emas — qisqa
+# javobda ortiqcha token yozilmaydi, shuning uchun uni kengaytirish tekin.
+# O'lchandi: bitta post uchun fikrlash 2200-3000 token oladi, matnning
+# o'zi esa ~250. Shift shundan sezilarli baland turishi kerak.
+MIN_OUTPUT_TOKENS_WITH_THINKING = 8192
 
 _EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
 

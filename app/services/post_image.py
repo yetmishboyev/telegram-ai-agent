@@ -81,6 +81,33 @@ def _gradient(draw, top: tuple, bottom: tuple) -> None:
                   fill=tuple(round(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
 
 
+def _glow(image, accent: tuple) -> None:
+    """Yuqori o'ng burchakka urg'u rangida yumshoq nur qo'yadi.
+
+    Tekis gradient o'zicha quruq ko'rinardi. Nur kartaga chuqurlik beradi va
+    ko'zni sarlavhaga tortadi. `radial_gradient` tayyor maska beradi —
+    piksel-piksel hisoblashdan tez va Pillow'ning o'zida bor.
+    """
+    from PIL import Image, ImageOps
+    size = int(W * 1.9)
+    big = ImageOps.invert(Image.radial_gradient("L")).resize((size, size))
+    big = big.point(lambda v: int((v / 255) ** 2.4 * 115))      # yumshoq chekka
+
+    # Maskani KESIB olamiz, kichik kvadratni yopishtirmaymiz: kvadrat chetlari
+    # kartaning ichiga tushib, ko'zga tashlanadigan vertikal chok qoldirardi.
+    # Markaz yuqori-o'ng burchakda; kesilgan maska aynan karta o'lchamida.
+    ox, oy = W - size // 2, -size // 2
+    mask = big.crop((-ox, -oy, -ox + W, -oy + H))
+    image.paste(Image.new("RGB", (W, H), accent), (0, 0), mask)
+
+
+def _grid(draw, accent: tuple) -> None:
+    """Pastki qismga sezilar-sezilmas gorizontal panjara — mato tuyg'usi."""
+    for i in range(9):
+        y = H - 300 + i * 34
+        draw.line([(0, y), (W, y)], fill=accent + (7,), width=1)
+
+
 # ─── matnni kartaga sig'dirish ────────────────────────────────────────────────
 
 def _wrap(draw, text: str, font, width: int) -> list[str]:
@@ -217,52 +244,66 @@ def render(post_type: str, title: str, subtitle: str = "", date_text: str = "") 
         image = Image.new("RGB", (W, H), bg_top)
         draw = ImageDraw.Draw(image, "RGBA")
         _gradient(draw, bg_top, bg_bottom)
+        _glow(image, accent)
+        draw = ImageDraw.Draw(image, "RGBA")     # paste'dan keyin qayta bog'lanadi
+        _grid(draw, accent)
 
         inner = W - MARGIN * 2
 
-        # Yuqori qator: belgi + post turi
-        _mark(draw, post_type, MARGIN + 13, MARGIN + 14, accent)
-        f_label = _font(28, bold=True)
-        draw.text((MARGIN + 44, MARGIN), " ".join(label), font=f_label, fill=accent)
-        draw.line([MARGIN, MARGIN + 62, W - MARGIN, MARGIN + 62], fill=DIVIDER, width=2)
+        # ── yuqori qator: tabletka-yorliq ──
+        f_label = _font(27, bold=True)
+        spaced = " ".join(label)
+        tw = draw.textlength(spaced, font=f_label)
+        pill_w = int(tw) + 96
+        draw.rounded_rectangle([MARGIN, MARGIN, MARGIN + pill_w, MARGIN + 58],
+                               radius=29, fill=accent + (26,), outline=accent + (90,), width=2)
+        _mark(draw, post_type, MARGIN + 34, MARGIN + 29, accent)
+        draw.text((MARGIN + 60, MARGIN + 15), spaced, font=f_label, fill=accent)
 
-        # Sarlavha — kartaning asosiy elementi, sig'adigan eng katta keglda
+        # ── sarlavha ──
         f_title, title_lines = _fit(
-            draw, title, [86, 76, 66, 58, 50, 44], inner, max_lines=5, bold=True
+            draw, title, [88, 78, 68, 60, 52, 46], inner, max_lines=5, bold=True
         )
-        line_h = int(f_title.size * 1.22)
+        line_h = int(f_title.size * 1.2)
         block_h = len(title_lines) * line_h
 
         sub_lines: list[str] = []
         f_sub = None
         if subtitle:
             f_sub, sub_lines = _fit(
-                draw, subtitle, [40, 36, 32, 29], inner, max_lines=3, bold=False
+                draw, subtitle, [38, 34, 31, 28], inner, max_lines=3, bold=False
             )
-            block_h += 46 + len(sub_lines) * int(f_sub.size * 1.34)
+            block_h += 52 + len(sub_lines) * int(f_sub.size * 1.36)
 
-        # Blok vertikal markazda — sarlavha uzun ham, qisqa ham muvozanatli tursin
-        y = max(MARGIN + 120, (H - block_h) // 2)
+        # Blok sarlavha va pastki qator orasida optik markazda
+        band_top, band_bottom = MARGIN + 58, H - 150
+        y = max(band_top + 60, band_top + (band_bottom - band_top - block_h) // 2)
+
+        # Sarlavha yonidagi vertikal urg'u chizig'i
+        draw.rounded_rectangle(
+            [MARGIN - 28, y + 8, MARGIN - 21, y + block_h - 8], radius=4, fill=accent
+        )
+
         for line in title_lines:
             draw.text((MARGIN, y), line, font=f_title, fill=INK)
             y += line_h
 
         if sub_lines and f_sub:
-            y += 26
-            draw.line([MARGIN, y, MARGIN + 76, y], fill=accent, width=4)
-            y += 22
+            y += 30
             sub_ink = _tint(accent)
             for line in sub_lines:
                 draw.text((MARGIN, y), line, font=f_sub, fill=sub_ink)
-                y += int(f_sub.size * 1.34)
+                y += int(f_sub.size * 1.36)
 
-        # Pastki qator
-        f_foot = _font(30)
-        draw.line([MARGIN, H - 122, W - MARGIN, H - 122], fill=DIVIDER, width=2)
-        draw.text((MARGIN, H - 92), CHANNEL, font=f_foot, fill=INK_SOFT)
+        # ── pastki qator ──
+        f_foot = _font(29)
+        draw.line([MARGIN, H - 118, W - MARGIN, H - 118], fill=DIVIDER, width=2)
+        draw.ellipse([MARGIN, H - 88, MARGIN + 12, H - 76], fill=accent)
+        foot_ink = _tint(accent, 0.25)
+        draw.text((MARGIN + 26, H - 92), CHANNEL, font=f_foot, fill=foot_ink)
         if date_text:
             dw = draw.textlength(date_text, font=f_foot)
-            draw.text((W - MARGIN - dw, H - 92), date_text, font=f_foot, fill=INK_SOFT)
+            draw.text((W - MARGIN - dw, H - 92), date_text, font=f_foot, fill=foot_ink)
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG", optimize=True)

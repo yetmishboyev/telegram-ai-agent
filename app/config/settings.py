@@ -56,9 +56,6 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
     cors_origins: str = "https://178-156-189-1.sslip.io"
-    # Kanal postidagi muqova kartasi shu manzil orqali tarqatiladi —
-    # Telegram rasmni o'zi yuklab olishi uchun tashqaridan ochiq bo'lishi shart.
-    public_base_url: str = "https://178-156-189-1.sslip.io"
 
     # --- Admin ---
     admin_username: str = "admin"

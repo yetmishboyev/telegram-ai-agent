@@ -39,6 +39,17 @@ def _quotes_to_html(text: str) -> str:
     return '\n'.join(result)
 
 
+# Telegram rasm izohining chegarasi. Cheklov HTML teglarига emas, ularsiz
+# qolgan MATNGA tegishli — teglar entity bo'lib alohida ketadi.
+CAPTION_LIMIT = 1024
+
+
+def _caption_len(html_text: str) -> int:
+    """Telegram hisoblaydigan izoh uzunligi: teglarsiz, entity'lar ochilgan."""
+    import html as _html
+    return len(_html.unescape(re.sub(r"<[^>]+>", "", html_text or "")))
+
+
 def _source_html(url: str) -> str:
     """Yangilik posti uchun manba havolasi qatori.
 
@@ -79,9 +90,18 @@ class ChannelPoster:
     async def _send_to_channel(self, text: str, post_type: str = "") -> int | None:
         """Kanalga post yuboradi. Muvaffaqiyatli bo'lsa message_id qaytaradi.
 
-        `post_type` berilsa post uchun muqova kartasi chiziladi va rasm matn
-        ustida ko'rinadi. Karta chizilmasa yoki yuborilmasa post oddiy matn
-        bo'lib chiqadi — rasm hech qachon postni to'sib qo'ymasligi kerak.
+        `post_type` berilsa post muqova kartasi BILAN BIRGA, bitta xabar
+        sifatida ketadi: rasm — fayl, post matni — uning izohi. Shuning uchun
+        rasm postga yopishib, uning tepasida turadi.
+
+        Ilgari karta serverdan tarqatilib, havola ko'rinishi orqali
+        biriktirilardi. U ikki marta `WEBPAGE_NOT_FOUND` bilan yiqildi:
+        Telegram yangi manzilni asinxron o'qiydi va biriktirish poygada
+        yutqazardi. Rasmni to'g'ridan-to'g'ri yuborishda bunday poyga yo'q.
+
+        Izoh 1024 belgidan oshsa rasm TASHLANADI va post to'liq matn bo'lib
+        chiqadi — postning bir qismini kesib tashlagandan ko'ra rasmsiz
+        chiqargan afzal.
         """
         try:
             from app.services.bot_service import bot_service
@@ -90,12 +110,27 @@ class ChannelPoster:
                 return None
 
             if post_type:
-                card_url = await self._store_card(text, post_type)
-                if card_url:
-                    msg_id = await self._send_with_card(text, card_url)
-                    if msg_id:
-                        return msg_id
-                    logger.warning("Muqovali post o'tmadi — matnli postga qaytildi")
+                length = _caption_len(text)
+                if length > CAPTION_LIMIT:
+                    logger.warning(
+                        f"Izoh uzun ({length} > {CAPTION_LIMIT}) — post rasmsiz chiqadi"
+                    )
+                else:
+                    from app.services import post_image, weather
+                    image = post_image.render_for_post(
+                        text, post_type, weather.uzbek_date()
+                    )
+                    if image:
+                        msg_id = await self._send_photo_to_channel(image, text)
+                        if msg_id:
+                            logger.info(
+                                f"Kanal posti muqova kartasi bilan yuborildi "
+                                f"(izoh {length}/{CAPTION_LIMIT} belgi)"
+                            )
+                            return msg_id
+                        logger.warning("Rasmli post o'tmadi — matnli postga qaytildi")
+                    else:
+                        logger.warning("Karta chizilmadi — post rasmsiz chiqadi")
 
             msg = await bot_service._client.send_message(CHANNEL, text, parse_mode="html")
             logger.info(f"Kanal post yuborildi: {text[:60]}...")
@@ -103,149 +138,6 @@ class ChannelPoster:
         except Exception as e:
             logger.error(f"Kanal post xatosi: {e}")
             return None
-
-    async def _store_card(self, text: str, post_type: str) -> str | None:
-        """Post uchun muqova kartasini chizib saqlaydi va uning manzilini qaytaradi.
-
-        Karta rasm sifatida EMAS, havola ko'rinishi (link preview) orqali
-        yuboriladi. Sababi o'lchov: Telegram rasm izohi 1024 belgi, postlar esa
-        1200-1900 belgi — ya'ni "rasm + izoh" postni kesib tashlagan bo'lardi.
-        Havola ko'rinishida matn to'liq qoladi va rasm uning ustida turadi.
-
-        Karta chizilmasa yoki Redis ishlamasa `None` qaytadi — post baribir
-        matn ko'rinishida chiqadi.
-        """
-        import base64
-        import uuid as _uuid
-        try:
-            from app.services import post_image
-            from app.services import weather
-            from app.database.redis import get_redis
-            from app.api.routes.cards import CARD_KEY, CARD_TTL
-
-            png = post_image.render_for_post(text, post_type, weather.uzbek_date())
-            if not png:
-                return None
-
-            card_id = _uuid.uuid4().hex[:16]
-            r = await get_redis()
-            await r.setex(
-                CARD_KEY.format(card_id), CARD_TTL,
-                base64.b64encode(png).decode("ascii"),
-            )
-            url = f"{settings.public_base_url.rstrip('/')}/p/{card_id}.png"
-            logger.info(f"Muqova kartasi tayyor ({len(png) // 1024} KB): {url}")
-            return url
-        except Exception as e:
-            logger.warning(f"Muqova kartasi tayyorlanmadi — post rasmsiz chiqadi: {e}")
-            return None
-
-    async def _wait_for_webpage(self, client, url: str, attempts: int = 8) -> bool:
-        """Telegram karta manzilini o'qib bo'lguncha kutadi.
-
-        Birinchi urinishda `GetWebPagePreview` chaqirilgan edi, lekin u
-        yetmadi: Telegram sahifani ASINXRON yuklaydi va darhol
-        `WebPagePending` qaytaradi. Millisekundlardan keyin ketgan
-        `SendMediaRequest` esa sahifani hali topa olmay `WEBPAGE_NOT_FOUND`
-        berardi — loglarda Telegram rasmni xatodan KEYIN yuklagani shundan.
-
-        Bu yerda sahifa haqiqiy `WebPage` bo'lguncha (yoki vaqt tugaguncha)
-        kutiladi. Tayyor bo'lmasa `False` — chaqiruvchi zaxira yo'lga o'tadi.
-        """
-        import asyncio
-        from telethon.tl.functions.messages import GetWebPagePreviewRequest
-        from telethon.tl.types import WebPage
-
-        for i in range(attempts):
-            try:
-                res = await client(GetWebPagePreviewRequest(message=url))
-                page = (getattr(res, "webpage", None)
-                        or getattr(getattr(res, "media", None), "webpage", None))
-                if isinstance(page, WebPage):
-                    logger.info(f"Telegram kartani o'qidi ({i + 1}-urinish)")
-                    return True
-            except Exception as e:
-                logger.debug(f"Ko'rib chiqish so'rovi xatosi: {e}")
-            await asyncio.sleep(0.8)
-
-        logger.warning("Telegram kartani belgilangan vaqtda o'qimadi")
-        return False
-
-    async def _send_with_card(self, text: str, card_url: str) -> int | None:
-        """Postni muqova kartasi MATN USTIDA turadigan holda yuboradi.
-
-        `invert_media` — havola ko'rinishini matndan yuqoriga chiqaradi,
-        `force_large_media` esa uni kichik belgi emas, katta rasm qilib
-        ko'rsatadi. Telethon'ning yuqori darajali `send_message` metodi bu
-        ikkovini ochib bermaydi, shuning uchun so'rov qo'lda yig'iladi.
-
-        MUHIM — avval ko'rib chiqish so'raladi: `InputMediaWebPage` Telegram
-        ALLAQACHON o'qigan sahifani talab qiladi. Karta manzili har postda
-        yangi bo'lgani uchun birinchi urinish `WEBPAGE_NOT_FOUND` bilan
-        yiqilardi va post rasm matn OSTIDA turgan holda chiqardi.
-        `GetWebPagePreview` Telegramni manzilni o'sha zahoti yuklab olishga
-        majbur qiladi, shundan keyingina u media sifatida biriktiriladi.
-
-        Xato bo'lsa oddiy havola ko'rinishiga, u ham bo'lmasa toza matnga
-        qaytamiz — rasm hech qachon postni to'sib qo'ymasligi kerak.
-        """
-        from app.services.bot_service import bot_service
-        client = bot_service._client
-
-        # Ko'rinmas havola: matnda belgi ko'rinmaydi, lekin Telegram uni o'qiydi
-        marked = f'<a href="{card_url}">\u200b</a>{text}'
-        try:
-            from telethon import helpers
-            from telethon.tl.functions.messages import SendMediaRequest
-            from telethon.tl.types import InputMediaWebPage
-
-            # Telegram kartani O'QIB BO'LGUNCHA kutamiz — bir marta so'rash
-            # yetmaydi, u sahifani asinxron yuklaydi.
-            await self._wait_for_webpage(client, card_url)
-
-            entity = await client.get_input_entity(CHANNEL)
-            message, entities = await client._parse_message_text(marked, "html")
-            result = await client(SendMediaRequest(
-                peer=entity,
-                media=InputMediaWebPage(url=card_url, force_large_media=True),
-                message=message,
-                entities=entities,
-                invert_media=True,          # rasm matn USTIDA
-                random_id=helpers.generate_random_long(),
-            ))
-            msg_id = self._message_id_from(result)
-            if msg_id:
-                logger.info("Kanal posti muqova kartasi bilan yuborildi")
-                return msg_id
-            logger.warning("Karta bilan yuborildi, lekin message_id topilmadi")
-        except Exception as e:
-            logger.warning(f"Katta muqova bilan yuborilmadi ({e}) — oddiy ko'rinishga o'tildi")
-
-        try:
-            msg = await client.send_message(
-                CHANNEL, marked, parse_mode="html", link_preview=True,
-            )
-            return msg.id
-        except Exception as e:
-            logger.error(f"Muqovali post yuborilmadi: {e}")
-            return None
-
-    @staticmethod
-    def _message_id_from(result) -> int | None:
-        """RPC natijasidan yangi xabar id sini oladi.
-
-        `SendMediaRequest` `Updates` qaytaradi va yangi xabar id si turli
-        update turlarida keladi (kanal uchun odatda `UpdateMessageID` yoki
-        `UpdateNewChannelMessage`), shuning uchun ikkovi ham qaraladi.
-        """
-        for update in getattr(result, "updates", []) or []:
-            msg_id = getattr(update, "id", None)
-            if msg_id and type(update).__name__ == "UpdateMessageID":
-                return msg_id
-            message = getattr(update, "message", None)
-            if message is not None and getattr(message, "id", None):
-                return message.id
-        return getattr(result, "id", None)
 
     async def _send_photo_to_channel(self, image: bytes, caption: str) -> int | None:
         """Kanalga rasm + izoh yuboradi. Muvaffaqiyatli bo'lsa message_id qaytaradi."""
@@ -256,7 +148,7 @@ class ChannelPoster:
                 logger.warning("Bot client tayyor emas")
                 return None
             stream = io.BytesIO(image)
-            stream.name = "ob-havo.png"   # Telethon turini nomdan aniqlaydi
+            stream.name = "post.png"      # Telethon turini nomdan aniqlaydi
             msg = await bot_service._client.send_file(
                 CHANNEL, stream, caption=caption, parse_mode="html",
             )
@@ -306,6 +198,13 @@ class ChannelPoster:
 
         if not bot_service._client:
             logger.warning("Bot client tayyor emas — post egaga yuborib bo'lmadi")
+            return
+
+        # Bo'sh post egaga bormasin: generatsiya yiqilganda (model butun
+        # byudjetni fikrlashga sarflab matn qoldirmasa) tugmali bo'sh xabar
+        # kelardi. Postsiz qolgan afzal — jadval keyingi safar qayta uradi.
+        if not (text or "").strip():
+            logger.error(f"Post matni bo'sh ({post_type}) — tasdiqlashga yuborilmadi")
             return
 
         # Sifat qatlami: muharrir-tanqid o'tkazib yakuniy versiyani olamiz

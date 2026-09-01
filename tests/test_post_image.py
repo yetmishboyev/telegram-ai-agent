@@ -88,210 +88,102 @@ def test_tint_lightens_towards_white():
     assert post_image._tint((100, 0, 0), 0.5) == (178, 128, 128)
 
 
-# ─── postga biriktirish ────────────────────────────────────────────────────────
+# ─── postga biriktirish: rasm + izoh ───────────────────────────────────────────
+# Post endi rasm FAYLI bilan bitta xabarda ketadi. Ilgari karta serverdan
+# tarqatilib havola ko'rinishi orqali biriktirilardi — u ikki marta
+# `WEBPAGE_NOT_FOUND` bilan yiqildi, chunki Telegram yangi manzilni asinxron
+# o'qiydi va biriktirish poygada yutqazardi.
+
+def _fake_bot(client):
+    return patch("app.services.bot_service.bot_service", type("B", (), {"_client": client}))
+
+
+def test_caption_len_ignores_tags_and_decodes_entities():
+    """Telegram cheklovi HTML teglarga emas, ochilgan MATNGA tegishli."""
+    from app.services.channel_poster import _caption_len
+    assert _caption_len("<b>Salom</b>") == 5
+    assert _caption_len('<a href="https://juda-uzun-manzil.com/x">uz</a>') == 2
+    assert _caption_len("5 &gt; 3") == 5
+    assert _caption_len("") == 0
+
 
 @pytest.mark.asyncio
-async def test_store_card_saves_base64_and_returns_public_url():
-    saved = {}
+async def test_send_to_channel_attaches_the_card_as_a_photo():
+    client = AsyncMock()
+    client.send_file.return_value = type("M", (), {"id": 77})()
+    with _fake_bot(client):
+        assert await channel_poster._send_to_channel(POST, "educational") == 77
 
-    class FakeRedis:
-        async def setex(self, key, ttl, value):
-            saved.update(key=key, ttl=ttl, value=value)
-
-    with patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())):
-        url = await channel_poster._store_card(POST, "educational")
-
-    assert url and url.endswith(".png") and "/p/" in url
-    card_id = url.rsplit("/p/", 1)[1].removesuffix(".png")
-    assert saved["key"] == f"post_card:{card_id}"
-    # Redis clienti decode_responses=True — xom baytlar buzilardi
-    assert base64.b64decode(saved["value"])[:8] == b"\x89PNG\r\n\x1a\n"
+    client.send_message.assert_not_awaited()          # matnli yo'l ishlatilmadi
+    kwargs = client.send_file.await_args.kwargs
+    assert kwargs["caption"] == POST                  # post matni izoh bo'ldi
+    assert kwargs["parse_mode"] == "html"
 
 
 @pytest.mark.asyncio
-async def test_store_card_returns_none_when_redis_is_down():
-    """Karta saqlanmasa post rasmsiz, lekin baribir chiqadi."""
-    with patch("app.database.redis.get_redis", AsyncMock(side_effect=RuntimeError("yo'q"))):
-        assert await channel_poster._store_card(POST, "educational") is None
+async def test_send_to_channel_drops_the_image_when_the_caption_is_too_long():
+    """Postni kesgandan ko'ra rasmsiz chiqargan afzal."""
+    from app.services.channel_poster import CAPTION_LIMIT
+    long_post = "**Sarlavha**\n\n" + "juda uzun matn " * 120
+    assert len(long_post) > CAPTION_LIMIT
+
+    client = AsyncMock()
+    client.send_message.return_value = type("M", (), {"id": 8})()
+    with _fake_bot(client):
+        assert await channel_poster._send_to_channel(long_post, "news") == 8
+
+    client.send_file.assert_not_awaited()
+    assert client.send_message.await_args.args[1] == long_post   # matn to'liq
 
 
 @pytest.mark.asyncio
 async def test_send_to_channel_without_type_stays_plain_text():
-    """Ob-havo kabi oqimlar kartasiz ishlashda davom etadi."""
+    """Ob-havo kabi oqimlar o'z rasmini o'zi yuboradi — bu yo'l tegmasin."""
     client = AsyncMock()
     client.send_message.return_value = type("M", (), {"id": 7})()
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
-         patch.object(channel_poster, "_store_card", AsyncMock()) as card:
+    with _fake_bot(client):
         assert await channel_poster._send_to_channel("matn") == 7
-    card.assert_not_awaited()
+    client.send_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_send_to_channel_falls_back_to_text_when_card_fails():
+async def test_send_to_channel_falls_back_to_text_when_the_card_cannot_be_drawn():
     client = AsyncMock()
     client.send_message.return_value = type("M", (), {"id": 11})()
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
-         patch.object(channel_poster, "_store_card", AsyncMock(return_value=None)):
+    with _fake_bot(client), \
+         patch("app.services.post_image.render_for_post", return_value=None):
         assert await channel_poster._send_to_channel("matn", "educational") == 11
+    client.send_file.assert_not_awaited()
     assert client.send_message.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_send_to_channel_uses_card_when_available():
+async def test_send_to_channel_falls_back_to_text_when_the_photo_send_fails():
     client = AsyncMock()
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
-         patch.object(channel_poster, "_store_card",
-                      AsyncMock(return_value="https://x/p/abc.png")), \
-         patch.object(channel_poster, "_send_with_card", AsyncMock(return_value=99)) as send:
-        assert await channel_poster._send_to_channel("matn", "news") == 99
-    assert send.await_args.args[1] == "https://x/p/abc.png"
-    client.send_message.assert_not_awaited()
+    client.send_file.side_effect = RuntimeError("Telegram rad etdi")
+    client.send_message.return_value = type("M", (), {"id": 12})()
+    with _fake_bot(client):
+        assert await channel_poster._send_to_channel(POST, "news") == 12
+    assert client.send_message.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_send_with_card_falls_back_to_plain_preview_on_rpc_error():
-    """Katta muqova o'tmasa oddiy havola ko'rinishiga qaytadi, post yo'qolmaydi."""
-    client = AsyncMock()
-    client.side_effect = RuntimeError("RPC xatosi")
-    client.send_message.return_value = type("M", (), {"id": 5})()
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
-         patch.object(channel_poster, "_wait_for_webpage", AsyncMock(return_value=True)):
-        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 5
-    sent = client.send_message.await_args.args[1]
-    assert "https://x/p/a.png" in sent and sent.endswith("matn")
-
-
-def test_message_id_from_reads_update_message_id():
-    update = type("UpdateMessageID", (), {"id": 42})()
-    result = type("Updates", (), {"updates": [update]})()
-    assert channel_poster._message_id_from(result) == 42
-
-
-def test_message_id_from_reads_new_channel_message():
-    update = type("UpdateNewChannelMessage", (),
-                  {"message": type("M", (), {"id": 77})()})()
-    result = type("Updates", (), {"updates": [update]})()
-    assert channel_poster._message_id_from(result) == 77
-
-
-# ─── ochiq karta yo'li ─────────────────────────────────────────────────────────
-# Telegram rasmni sessiyasiz yuklab oladi, shuning uchun yo'l parolsiz.
-# Demak kalit shakli qat'iy tekshirilishi shart.
-
-@pytest.mark.asyncio
-async def test_card_route_returns_png():
-    from app.api.routes.cards import get_post_card
-    png = post_image.render("news", "Sarlavha")
+async def test_approved_post_reaches_the_channel_with_its_type():
+    """Tasdiqlash oqimi post turini uzatadi — busiz rasm chizilmaydi."""
+    import json
+    from app.services.bot_service import bot_service
 
     class FakeRedis:
         async def get(self, key):
-            assert key == "post_card:abcdef01"
-            return base64.b64encode(png).decode()
+            return json.dumps({"text": POST, "post_type": "practical", "topic": "t"})
+        async def delete(self, key):
+            return 1
 
-    with patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())):
-        resp = await get_post_card("abcdef01")
+    event = AsyncMock()
+    with patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())), \
+         patch.object(channel_poster, "_send_to_channel",
+                      AsyncMock(return_value=55)) as send, \
+         patch.object(channel_poster, "_save_channel_post", AsyncMock()):
+        await bot_service._approve_post(event, "abc123")
 
-    assert resp.media_type == "image/png"
-    assert resp.body[:8] == b"\x89PNG\r\n\x1a\n"
-    assert "max-age" in resp.headers["cache-control"]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("bad", [
-    "../../etc/passwd", "post_card:*", "ABCDEF01", "abc", "a" * 40, "abc def",
-])
-async def test_card_route_rejects_malformed_ids(bad):
-    """Kalit Redis so'roviga qo'shiladi — shakli noto'g'ri bo'lsa umuman bormaydi."""
-    from fastapi import HTTPException
-    from app.api.routes.cards import get_post_card
-    redis = AsyncMock()
-    with patch("app.database.redis.get_redis", AsyncMock(return_value=redis)):
-        with pytest.raises(HTTPException) as err:
-            await get_post_card(bad)
-    assert err.value.status_code == 404
-    redis.get.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_card_route_404_when_expired():
-    from fastapi import HTTPException
-    from app.api.routes.cards import get_post_card
-
-    class FakeRedis:
-        async def get(self, key):
-            return None
-
-    with patch("app.database.redis.get_redis", AsyncMock(return_value=FakeRedis())):
-        with pytest.raises(HTTPException) as err:
-            await get_post_card("deadbeef")
-    assert err.value.status_code == 404
-
-
-# ─── Telegram kartani o'qib bo'lguncha kutish ──────────────────────────────────
-# Birinchi tuzatishda ko'rib chiqish BIR marta so'ralib, darhol yuborilgandi.
-# Telegram sahifani asinxron yuklaydi va `WebPagePending` qaytaradi, shuning
-# uchun `SendMediaRequest` `WEBPAGE_NOT_FOUND` berardi.
-
-def _pending(url="https://x/p/a.png"):
-    import datetime
-    from telethon.tl.types import MessageMediaWebPage, WebPagePending
-    return MessageMediaWebPage(
-        webpage=WebPagePending(id=1, date=datetime.datetime.now(), url=url)
-    )
-
-
-def _ready(url="https://x/p/a.png"):
-    from telethon.tl.types import MessageMediaWebPage, WebPage
-    return MessageMediaWebPage(
-        webpage=WebPage(id=1, url=url, display_url="x", hash=0)
-    )
-
-
-@pytest.mark.asyncio
-async def test_wait_for_webpage_polls_until_telegram_resolves_it():
-    client = AsyncMock(side_effect=[_pending(), _pending(), _ready()])
-    with patch("asyncio.sleep", AsyncMock()):
-        assert await channel_poster._wait_for_webpage(client, "https://x/p/a.png") is True
-    assert client.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_wait_for_webpage_gives_up_and_reports_false():
-    """Tayyor bo'lmasa — `False`, chaqiruvchi zaxira yo'lga o'tadi."""
-    client = AsyncMock(return_value=_pending())
-    with patch("asyncio.sleep", AsyncMock()):
-        assert await channel_poster._wait_for_webpage(
-            client, "https://x/p/a.png", attempts=3) is False
-    assert client.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_wait_for_webpage_survives_rpc_errors():
-    client = AsyncMock(side_effect=RuntimeError("RPC yiqildi"))
-    with patch("asyncio.sleep", AsyncMock()):
-        assert await channel_poster._wait_for_webpage(
-            client, "https://x/p/a.png", attempts=2) is False
-
-
-@pytest.mark.asyncio
-async def test_send_with_card_waits_before_attaching():
-    """Kutish yuborishdan OLDIN bo'lishi kerak."""
-    order = []
-
-    async def rpc(request):
-        order.append("send")
-        update = type("UpdateMessageID", (), {"id": 31})()
-        return type("Updates", (), {"updates": [update]})()
-
-    client = AsyncMock(side_effect=rpc)
-    client._parse_message_text.return_value = ("matn", [])
-
-    async def fake_wait(c, url, attempts=8):
-        order.append("wait")
-        return True
-
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
-         patch.object(channel_poster, "_wait_for_webpage", AsyncMock(side_effect=fake_wait)):
-        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 31
-
-    assert order == ["wait", "send"]
+    assert send.await_args.args == (POST, "practical")
