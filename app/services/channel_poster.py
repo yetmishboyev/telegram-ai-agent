@@ -140,6 +140,37 @@ class ChannelPoster:
             logger.warning(f"Muqova kartasi tayyorlanmadi — post rasmsiz chiqadi: {e}")
             return None
 
+    async def _wait_for_webpage(self, client, url: str, attempts: int = 8) -> bool:
+        """Telegram karta manzilini o'qib bo'lguncha kutadi.
+
+        Birinchi urinishda `GetWebPagePreview` chaqirilgan edi, lekin u
+        yetmadi: Telegram sahifani ASINXRON yuklaydi va darhol
+        `WebPagePending` qaytaradi. Millisekundlardan keyin ketgan
+        `SendMediaRequest` esa sahifani hali topa olmay `WEBPAGE_NOT_FOUND`
+        berardi — loglarda Telegram rasmni xatodan KEYIN yuklagani shundan.
+
+        Bu yerda sahifa haqiqiy `WebPage` bo'lguncha (yoki vaqt tugaguncha)
+        kutiladi. Tayyor bo'lmasa `False` — chaqiruvchi zaxira yo'lga o'tadi.
+        """
+        import asyncio
+        from telethon.tl.functions.messages import GetWebPagePreviewRequest
+        from telethon.tl.types import WebPage
+
+        for i in range(attempts):
+            try:
+                res = await client(GetWebPagePreviewRequest(message=url))
+                page = (getattr(res, "webpage", None)
+                        or getattr(getattr(res, "media", None), "webpage", None))
+                if isinstance(page, WebPage):
+                    logger.info(f"Telegram kartani o'qidi ({i + 1}-urinish)")
+                    return True
+            except Exception as e:
+                logger.debug(f"Ko'rib chiqish so'rovi xatosi: {e}")
+            await asyncio.sleep(0.8)
+
+        logger.warning("Telegram kartani belgilangan vaqtda o'qimadi")
+        return False
+
     async def _send_with_card(self, text: str, card_url: str) -> int | None:
         """Postni muqova kartasi MATN USTIDA turadigan holda yuboradi.
 
@@ -165,16 +196,12 @@ class ChannelPoster:
         marked = f'<a href="{card_url}">\u200b</a>{text}'
         try:
             from telethon import helpers
-            from telethon.tl.functions.messages import (
-                GetWebPagePreviewRequest, SendMediaRequest,
-            )
+            from telethon.tl.functions.messages import SendMediaRequest
             from telethon.tl.types import InputMediaWebPage
 
-            # Telegram kartani yuklab olsin — busiz keyingi qadam yiqiladi
-            try:
-                await client(GetWebPagePreviewRequest(message=card_url))
-            except Exception as e:
-                logger.debug(f"Ko'rib chiqish oldindan so'ralmadi: {e}")
+            # Telegram kartani O'QIB BO'LGUNCHA kutamiz — bir marta so'rash
+            # yetmaydi, u sahifani asinxron yuklaydi.
+            await self._wait_for_webpage(client, card_url)
 
             entity = await client.get_input_entity(CHANNEL)
             message, entities = await client._parse_message_text(marked, "html")

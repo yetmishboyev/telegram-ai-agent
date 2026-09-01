@@ -154,7 +154,8 @@ async def test_send_with_card_falls_back_to_plain_preview_on_rpc_error():
     client = AsyncMock()
     client.side_effect = RuntimeError("RPC xatosi")
     client.send_message.return_value = type("M", (), {"id": 5})()
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})):
+    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
+         patch.object(channel_poster, "_wait_for_webpage", AsyncMock(return_value=True)):
         assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 5
     sent = client.send_message.await_args.args[1]
     assert "https://x/p/a.png" in sent and sent.endswith("matn")
@@ -226,49 +227,71 @@ async def test_card_route_404_when_expired():
     assert err.value.status_code == 404
 
 
-@pytest.mark.asyncio
-async def test_send_with_card_prewarms_the_preview_before_sending():
-    """Telegram karta manzilini oldin yuklab olishi shart.
+# ─── Telegram kartani o'qib bo'lguncha kutish ──────────────────────────────────
+# Birinchi tuzatishda ko'rib chiqish BIR marta so'ralib, darhol yuborilgandi.
+# Telegram sahifani asinxron yuklaydi va `WebPagePending` qaytaradi, shuning
+# uchun `SendMediaRequest` `WEBPAGE_NOT_FOUND` berardi.
 
-    `InputMediaWebPage` allaqachon o'qilgan sahifani talab qiladi; karta
-    manzili har postda yangi bo'lgani uchun busiz `WEBPAGE_NOT_FOUND`
-    qaytardi va rasm matn ostiga tushib qolardi.
-    """
-    from telethon.tl.functions.messages import (
-        GetWebPagePreviewRequest, SendMediaRequest,
+def _pending(url="https://x/p/a.png"):
+    import datetime
+    from telethon.tl.types import MessageMediaWebPage, WebPagePending
+    return MessageMediaWebPage(
+        webpage=WebPagePending(id=1, date=datetime.datetime.now(), url=url)
     )
-    calls = []
 
-    async def rpc(request):
-        calls.append(type(request))
-        if isinstance(request, SendMediaRequest):
-            update = type("UpdateMessageID", (), {"id": 31})()
-            return type("Updates", (), {"updates": [update]})()
-        return object()
 
-    client = AsyncMock(side_effect=rpc)
-    client._parse_message_text.return_value = ("matn", [])
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})):
-        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 31
-
-    assert calls.index(GetWebPagePreviewRequest) < calls.index(SendMediaRequest), \
-        "ko'rib chiqish yuborishdan OLDIN so'ralishi kerak"
+def _ready(url="https://x/p/a.png"):
+    from telethon.tl.types import MessageMediaWebPage, WebPage
+    return MessageMediaWebPage(
+        webpage=WebPage(id=1, url=url, display_url="x", hash=0)
+    )
 
 
 @pytest.mark.asyncio
-async def test_send_with_card_survives_a_failing_prewarm():
-    """Oldindan yuklatish yiqilsa ham yuborish davom etsin."""
-    from telethon.tl.functions.messages import (
-        GetWebPagePreviewRequest, SendMediaRequest,
-    )
+async def test_wait_for_webpage_polls_until_telegram_resolves_it():
+    client = AsyncMock(side_effect=[_pending(), _pending(), _ready()])
+    with patch("asyncio.sleep", AsyncMock()):
+        assert await channel_poster._wait_for_webpage(client, "https://x/p/a.png") is True
+    assert client.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_wait_for_webpage_gives_up_and_reports_false():
+    """Tayyor bo'lmasa — `False`, chaqiruvchi zaxira yo'lga o'tadi."""
+    client = AsyncMock(return_value=_pending())
+    with patch("asyncio.sleep", AsyncMock()):
+        assert await channel_poster._wait_for_webpage(
+            client, "https://x/p/a.png", attempts=3) is False
+    assert client.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_wait_for_webpage_survives_rpc_errors():
+    client = AsyncMock(side_effect=RuntimeError("RPC yiqildi"))
+    with patch("asyncio.sleep", AsyncMock()):
+        assert await channel_poster._wait_for_webpage(
+            client, "https://x/p/a.png", attempts=2) is False
+
+
+@pytest.mark.asyncio
+async def test_send_with_card_waits_before_attaching():
+    """Kutish yuborishdan OLDIN bo'lishi kerak."""
+    order = []
 
     async def rpc(request):
-        if isinstance(request, GetWebPagePreviewRequest):
-            raise RuntimeError("preview xatosi")
-        update = type("UpdateMessageID", (), {"id": 33})()
+        order.append("send")
+        update = type("UpdateMessageID", (), {"id": 31})()
         return type("Updates", (), {"updates": [update]})()
 
     client = AsyncMock(side_effect=rpc)
     client._parse_message_text.return_value = ("matn", [])
-    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})):
-        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 33
+
+    async def fake_wait(c, url, attempts=8):
+        order.append("wait")
+        return True
+
+    with patch("app.services.bot_service.bot_service", type("B", (), {"_client": client})), \
+         patch.object(channel_poster, "_wait_for_webpage", AsyncMock(side_effect=fake_wait)):
+        assert await channel_poster._send_with_card("matn", "https://x/p/a.png") == 31
+
+    assert order == ["wait", "send"]
