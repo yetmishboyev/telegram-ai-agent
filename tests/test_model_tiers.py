@@ -55,7 +55,9 @@ def test_temperature_translates_to_effort(temperature, expected):
     ("balanced", 0.4, "medium"),
     ("balanced", 0.1, "low"),      # shift pastga majburlamaydi
     ("fast",     0.9, "low"),
-    ("deep",     0.9, "high"),     # kanal posti fon vazifasi — cheklanmaydi
+    # Kanal posti chuqur muhokama emas — `high` fikrlashning katta qismi
+    # 110 so'zlik matnga qaytmasdi, shuning uchun shift `medium`.
+    ("deep",     0.9, "medium"),
     ("deep",     0.3, "low"),
 ])
 def test_tier_caps_effort(tier, temperature, expected):

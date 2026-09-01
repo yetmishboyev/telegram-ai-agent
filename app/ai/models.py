@@ -98,11 +98,16 @@ _EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
 
 # Qatlam uchun ruxsat etilgan ENG YUQORI effort. Sabab — kechikish: foydalanuvchi
 # javobini kutib turadi, shuning uchun BALANCED qatlam `high` ga chiqmaydi.
-# Kanal posti esa fon vazifasi, u yerda sifat kechikishdan muhimroq.
+#
+# DEEP ilgari `high` edi. O'lchov shuni ko'rsatdiki, bitta 110 so'zlik post
+# uchun fikrlash 2200-3000 token yeydi, matnning o'zi esa ~250 — ya'ni
+# chuqurlikning katta qismi kanal postiga qaytmaydi. Post yozish uzoq
+# muhokama talab qiladigan vazifa emas; `medium` shu ish uchun yetarli va
+# xarajatni sezilarli tushiradi. Sifat pasaysa — bu yerdan qaytariladi.
 _TIER_EFFORT_CAP = {
     "fast":     "low",
     "balanced": "medium",
-    "deep":     "high",
+    "deep":     "medium",
 }
 
 
